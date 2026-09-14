@@ -98,9 +98,11 @@ export async function loadPresentationAssets(
   if (!source || new URLSearchParams(location.search).has('manim-capture')) {
     return compilePresentation(definition);
   }
+  // The handout has a stable URL while deck bundles change on each build.
+  // Revalidate it so a cached handout cannot outlive the deck it describes.
   const assets: PresentationAssets =
     typeof source === 'string'
-      ? await fetch(source).then(async (response) => {
+      ? await fetch(source, { cache: 'no-cache' }).then(async (response) => {
           if (!response.ok)
             throw new Error(`Could not load presentation assets: ${source} (${response.status})`);
           return response.json();
