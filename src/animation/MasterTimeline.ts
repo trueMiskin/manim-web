@@ -213,6 +213,18 @@ export class MasterTimeline extends Timeline {
     return this;
   }
 
+  /** Release compiled evaluators, animation references and navigation metadata. */
+  override clear(): this {
+    super.clear();
+    this._evaluator = undefined;
+    this._segments = [];
+    this._slides = [];
+    this._slideBoundaries = [];
+    this._mobjectFirstSegment.clear();
+    this._savedMobjectOpacities.clear();
+    return this;
+  }
+
   /**
    * Add a segment containing one or more parallel animations.
    */

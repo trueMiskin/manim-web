@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { Player } from './Player';
 import { Square } from '../mobjects/geometry/Rectangle';
 import { Group } from '../core/Group';
@@ -10,6 +10,9 @@ import { TracedPath } from '../animation/changing';
 import { ThreeDScene } from '../core/ThreeDScene';
 import { Create } from '../animation/creation/Create';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
+import { Animation } from '../animation/Animation';
+import { AnimationGroup } from '../animation/AnimationGroup';
+import { UpdateFromAlphaFunc } from '../animation/UpdateFromAlphaFunc';
 
 function player() {
   return new Player(document.createElement('div'), {
@@ -21,6 +24,65 @@ function player() {
 }
 
 describe('compiled scene checkpoints', () => {
+  // MIGRATION: compiled evaluation owns restoration without duplicate deep copies;
+  // nested hooks and later standalone animation reuse retain their normal lifecycle.
+  it('scopes checkpoint ownership to recording hooks, including exceptional exits', async () => {
+    const p = player();
+    const square = new Square();
+    const copy = vi.spyOn(square, 'copy');
+    const animation = new UpdateFromAlphaFunc(square, (object, alpha) =>
+      object.moveTo([alpha * 3, 0, 0]),
+    );
+    const begin = vi.spyOn(animation, 'begin');
+    const reset = vi.spyOn(animation, 'reset');
+    await p.sequence(async (scene) => {
+      await scene.step({ id: 'move' }, () => scene.play(new AnimationGroup([animation])));
+    });
+    const render = vi.spyOn(p.scene.renderer, 'render');
+    p.seek(0.5);
+    // Intermediate restoration is not drawn before the requested frame.
+    expect(render).toHaveBeenCalledOnce();
+    p.seekCheckpoint('move');
+    expect(square.getCenter()[0]).toBeCloseTo(3);
+    expect(begin).toHaveBeenCalled();
+    expect(reset).toHaveBeenCalled();
+    expect(copy).not.toHaveBeenCalled();
+    expect(() =>
+      Animation.withExternalState([animation], () => {
+        throw new Error('interrupted hook');
+      }),
+    ).toThrow('interrupted hook');
+    animation.begin();
+    square.shift([2, 0, 0]);
+    animation.reset();
+    expect(copy).toHaveBeenCalledOnce();
+    expect(square.getCenter()[0]).toBeCloseTo(3);
+    p.dispose();
+  });
+
+  // MIGRATION: terminal disposal stops active playback and releases compilation
+  // references even when the caller retains the player and returned metadata.
+  it('releases a disposed player without destroying returned checkpoint metadata', async () => {
+    const p = player();
+    const square = new Square();
+    await p.sequence(async (scene) => {
+      scene.add(square);
+      await scene.step({ id: 'move', notes: 'Retained metadata' }, () =>
+        scene.play(square.animate.shift([2, 0, 0])),
+      );
+    });
+    const checkpoints = p.checkpoints;
+    p.playCheckpoint('move');
+    p.dispose();
+    expect(p.isPlaying).toBe(false);
+    expect(p.timeline.isPlaying()).toBe(false);
+    expect(p.timeline.length).toBe(0);
+    expect(p.timeline.isCompiled).toBe(false);
+    expect(p.checkpoints).toHaveLength(0);
+    expect(checkpoints[0].notes).toBe('Retained metadata');
+    expect(p.scene.mobjects.size).toBe(0);
+  });
+
   // MIGRATION: leaving any partially drawn interval restores the destination's complete stroke.
   it('restores stroke material state after an interrupted Create', async () => {
     const p = player();

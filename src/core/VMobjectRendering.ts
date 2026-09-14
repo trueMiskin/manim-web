@@ -86,6 +86,8 @@ export abstract class VMobjectRendering extends Mobject {
 
   /** Tracks whether opacity was fully opaque last sync (for corner-wrap rebuild) */
   private _wasOpaque: boolean = true;
+  private _hadFill = false;
+  private _lastStrokeWidth = 0;
 
   /** Cached Line2 for in-place geometry updates (avoids dispose/recreate) */
   private _cachedLine2: Line2 | null = null;
@@ -747,6 +749,14 @@ export abstract class VMobjectRendering extends Mobject {
         this._getRendererHeight(),
         typeof window !== 'undefined' ? Math.min(window.devicePixelRatio, 2) : 1,
       );
+    }
+
+    // Fill presence and stroke width change the built geometry, not just materials.
+    const hasFill = this.fillOpacity > 0;
+    if (hasFill !== this._hadFill || this.strokeWidth !== this._lastStrokeWidth) {
+      this._geometryDirty = true;
+      this._hadFill = hasFill;
+      this._lastStrokeWidth = this.strokeWidth;
     }
 
     this._syncGeometryForOpacity();

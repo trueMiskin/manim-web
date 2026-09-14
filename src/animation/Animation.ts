@@ -61,6 +61,25 @@ export abstract class Animation<M extends Mobject = Mobject> {
    */
   private _preAnimationState: Mobject | null = null;
 
+  /** The compiled recorder supplies its own complete scene snapshots. */
+  private _externalState = false;
+
+  /**
+   * Run synchronous animation hooks with restoration owned by a scene checkpoint.
+   * Subclass begin/reset hooks still run. Ownership ends even if a hook throws,
+   * so the same animation can subsequently run on a legacy timeline.
+   * @internal
+   */
+  static withExternalState<T>(animations: readonly Animation[], callback: () => T): T {
+    const previous = animations.map((animation) => animation._externalState);
+    animations.forEach((animation) => (animation._externalState = true));
+    try {
+      return callback();
+    } finally {
+      animations.forEach((animation, index) => (animation._externalState = previous[index]));
+    }
+  }
+
   constructor(mobject: M, options: AnimationOptions = {}) {
     // Validate options via typia to generate runtime assertions.
     typia.assert<AnimationOptions>(options);
@@ -76,7 +95,7 @@ export abstract class Animation<M extends Mobject = Mobject> {
    * reset() can restore it for clean backward seeking.
    */
   begin(): void {
-    if (!this._preAnimationState) {
+    if (!this._externalState && !this._preAnimationState) {
       // `copy()` is abstract on Mobject, so a bare `new Mobject()` (no concrete
       // subclass) has no `copy` on its prototype at runtime. Such bare mobjects
       // only ever come from animation tests; detect them by prototype lookup and
@@ -204,7 +223,7 @@ export abstract class Animation<M extends Mobject = Mobject> {
    * re-seeking (especially backward) produces correct results.
    */
   reset(): void {
-    if (this._preAnimationState) {
+    if (!this._externalState && this._preAnimationState) {
       // Restore the mobject's visual properties from the snapshot
       const saved = this._preAnimationState;
       this.mobject.position.copy(saved.position);
@@ -228,6 +247,12 @@ export abstract class Animation<M extends Mobject = Mobject> {
     this._startTime = null;
     this._isFinished = false;
     this._hasBegun = false;
+  }
+
+  /** Release animation-owned snapshots; the animated mobject remains owned by its caller. */
+  dispose(): void {
+    this._preAnimationState?.dispose?.();
+    this._preAnimationState = null;
   }
 
   /**

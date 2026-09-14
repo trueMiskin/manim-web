@@ -248,6 +248,8 @@ export class Timeline {
    * Clear all animations from the timeline.
    */
   clear(): this {
+    for (const animation of new Set(this._animations.map((entry) => entry.animation)))
+      animation.dispose();
     this._animations = [];
     this._duration = 0;
     this._currentTime = 0;

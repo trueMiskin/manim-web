@@ -764,16 +764,20 @@ export class Player {
   }
 
   /** Clean up all resources. */
+  /** Terminal cleanup. Playback stops and compiled animation/state caches are released. */
   dispose(): void {
     if (this._disposed) return;
     this._disposed = true;
     this._stopLoop();
     this._slideInteraction?.dispose();
     this._slideInteraction = null;
+    this._isPlaying = false;
     document.removeEventListener('fullscreenchange', this._onFullscreenChange);
     this._ui?.dispose();
     this._controller.dispose();
     this._recorder?.disposeDetached();
+    this._recorder = null;
+    this._masterTimeline.clear();
     if (this._ownsScene) this._scene.dispose();
     this._listeners.clear();
   }
