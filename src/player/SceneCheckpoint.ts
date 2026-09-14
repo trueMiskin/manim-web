@@ -3,6 +3,7 @@ import { Mobject, type UpdaterFunction } from '../core/Mobject';
 import { Scene } from '../core/Scene';
 import { Camera3D } from '../core/Camera';
 import { serializeMobject, deserializeMobject, type MobjectState } from '../core/StateManager';
+import { getExplicitRenderOrder, setExplicitRenderOrder } from '../core/SceneComposition';
 
 interface ObjectCheckpoint {
   readonly object: Mobject;
@@ -10,6 +11,8 @@ interface ObjectCheckpoint {
   readonly children: readonly Mobject[];
   readonly updaters: readonly UpdaterFunction[];
   readonly visible: boolean;
+  readonly renderOrder: number;
+  readonly explicitOrder?: number;
 }
 
 /** In-memory checkpoint: immutable data, retaining identities for updater closures. */
@@ -55,10 +58,12 @@ export function captureScene(scene: Scene, known: Iterable<Mobject> = []): Scene
       Array.from(objects, (object) =>
         Object.freeze({
           object,
-          state: freezeData({ ...serializeMobject(object), children: [] }),
+          state: freezeData(serializeMobject(object, false)),
           children: Object.freeze([...object.children]),
           updaters: Object.freeze(object.getUpdaters()),
           visible: object.getThreeObject().visible,
+          renderOrder: object.getThreeObject().renderOrder,
+          explicitOrder: getExplicitRenderOrder(object.getThreeObject()),
         }),
       ),
     ),
@@ -75,10 +80,12 @@ export function restoreScene(scene: Scene, checkpoint: SceneCheckpoint): void {
   scene.batch(() => {
     scene.remove(...scene.mobjects);
     for (const entry of checkpoint.objects) {
-      entry.object.remove(...entry.object.children);
+      for (const child of [...entry.object.children]) entry.object.remove(child);
     }
     for (const entry of checkpoint.objects) {
-      entry.object.add(...entry.children);
+      for (const child of entry.children) entry.object.add(child);
+    }
+    for (const entry of checkpoint.objects) {
       entry.object.clearUpdaters();
       entry.updaters.forEach((updater) => entry.object.addUpdater(updater));
       deserializeMobject(entry.object, entry.state);
@@ -90,6 +97,11 @@ export function restoreScene(scene: Scene, checkpoint: SceneCheckpoint): void {
       ).addFixedInFrameMobjects(...checkpoint.fixedInFrame);
     }
     scene.add(...checkpoint.members);
+    for (const entry of checkpoint.objects) {
+      const threeObject = entry.object.getThreeObject();
+      threeObject.renderOrder = entry.renderOrder;
+      setExplicitRenderOrder(threeObject, entry.explicitOrder);
+    }
     scene.camera.frameWidth = checkpoint.frameWidth;
     scene.camera.frameHeight = checkpoint.frameHeight;
     scene.camera.getCamera().copy(checkpoint.camera);

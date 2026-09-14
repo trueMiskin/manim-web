@@ -221,6 +221,7 @@ export class ImageMobject extends TexturedMobject {
       this._source,
       // onLoad callback
       (texture) => {
+        texture.colorSpace = THREE.SRGBColorSpace;
         texture.magFilter =
           this._resampling === 'nearest' ? THREE.NearestFilter : THREE.LinearFilter;
         texture.minFilter =
@@ -404,6 +405,10 @@ export class ImageMobject extends TexturedMobject {
     // Create new texture from canvas
     const newTexture = new THREE.CanvasTexture(canvas);
     newTexture.colorSpace = THREE.SRGBColorSpace;
+    newTexture.magFilter =
+      this._resampling === 'nearest' ? THREE.NearestFilter : THREE.LinearFilter;
+    newTexture.minFilter =
+      this._resampling === 'nearest' ? THREE.NearestFilter : THREE.LinearMipmapLinearFilter;
 
     // Dispose old texture and use new one
     if (this._texture) {

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { Player } from './Player';
 import { Square } from '../mobjects/geometry/Rectangle';
 import { Group } from '../core/Group';
+import { VGroup } from '../core/VGroup';
 import { GrowFromCenter } from '../animation/growing';
 import { ValueTracker } from '../mobjects/value-tracker/ValueTracker';
 import { TracedPath } from '../animation/changing';
@@ -26,7 +27,9 @@ describe('compiled scene checkpoints', () => {
       fillOpacity: 1,
       strokeColor: '#a0522d',
     });
-    const group = new Group(square);
+    const nested = new VGroup(square);
+    const sibling = new Square().shift([3, 0, 0]);
+    const group = new Group(nested, sibling);
     const other = new Square();
     await p.sequence(async (scene) => {
       await scene.step({ id: 'grow' }, () => scene.play(new GrowFromCenter(group)));
@@ -35,17 +38,18 @@ describe('compiled scene checkpoints', () => {
         scene.remove(group);
       });
       await scene.step({ id: 'replace-child' }, () => {
-        group.remove(square);
+        group.remove(nested);
         group.add(other);
         scene.add(group);
       });
     });
     p.seekCheckpoint('replace-child');
-    expect(group.children).toEqual([other]);
+    expect(group.children).toEqual([sibling, other]);
     p.seekCheckpoint('remove');
     expect(p.scene.mobjects.has(group)).toBe(false);
     p.seekCheckpoint('grow');
-    expect(group.children).toEqual([square]);
+    expect(group.children).toEqual([nested, sibling]);
+    expect(nested.children).toEqual([square]);
     expect(square.getBoundingBox().width).toBeGreaterThan(1);
     expect(square.style.fillColor).toBe('#00ff00');
     expect(square.style.strokeColor).toBe('#a0522d');
