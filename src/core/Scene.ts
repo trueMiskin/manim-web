@@ -14,7 +14,11 @@ import { AudioManager, type AddSoundOptions, type AudioTrack } from './AudioMana
 import { ensureAnimateProxyRegistered } from './AnimateProxy';
 import type { MultiCamera } from './CameraExtensions';
 import { logger } from '../utils/logger';
-import { prepareSceneComposition, setSceneComposition } from './SceneComposition';
+import {
+  prepareSceneComposition,
+  setSceneComposition,
+  setExplicitRenderOrder,
+} from './SceneComposition';
 
 // AnimateProxy self-registers with Mobject via a top-level side effect
 // (see AnimateProxy.ts) to avoid the Mobject -> AnimateProxy -> Transform ->
@@ -428,6 +432,7 @@ export class Scene {
       // Set very high renderOrder so it draws on top
       const threeObj = mobject.getThreeObject();
       const fgRo = 10000 + this._renderOrderCounter++;
+      setExplicitRenderOrder(threeObj, fgRo);
       threeObj.renderOrder = fgRo;
       threeObj.traverse((child) => {
         child.renderOrder = fgRo;

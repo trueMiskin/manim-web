@@ -7,6 +7,7 @@ import { Line } from '../mobjects/geometry/Line';
 import { Create } from '../animation/creation/Create';
 import { Torus } from '../mobjects/three-d/Torus';
 import { prepareSceneComposition } from './SceneComposition';
+import { Group } from './Group';
 
 function materials(root: THREE.Object3D): THREE.Material[] {
   const result: THREE.Material[] = [];
@@ -25,7 +26,7 @@ describe('Scene composition', () => {
     const fill = new Circle({ fillOpacity: 0.5 });
     const ray = new Line({ start: [-2, 0, 0], end: [2, 0, 0] });
     const marker = new Circle({ radius: 0.1, fillOpacity: 1 });
-    scene.add(fill, ray);
+    scene.add(new Group(fill, marker), ray);
     scene.addForegroundMobject(marker);
     const animation = new Create(ray);
     animation.begin();

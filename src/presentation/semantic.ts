@@ -37,6 +37,19 @@ export function inspectSceneText(scene: Scene): ProjectedTextRun[] {
         const projectedWidth = horizontal.length();
         const projectedHeight = vertical.length();
         if (projectedWidth < 0.01 || projectedHeight < 0.01) continue;
+        const corners = [
+          origin,
+          origin.clone().add(horizontal),
+          origin.clone().add(vertical),
+          origin.clone().add(horizontal).add(vertical),
+        ];
+        if (
+          Math.max(...corners.map((point) => point.x)) <= 0 ||
+          Math.min(...corners.map((point) => point.x)) >= width ||
+          Math.max(...corners.map((point) => point.y)) <= 0 ||
+          Math.min(...corners.map((point) => point.y)) >= height
+        )
+          continue;
         result.push({
           ...run,
           readingOrder: result.length,

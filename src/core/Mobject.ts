@@ -171,6 +171,14 @@ export abstract class Mobject {
     return this;
   }
 
+  /** Set fill and stroke opacity throughout this object's hierarchy. */
+  setOpacity(opacity: number): this {
+    this.setStrokeOpacity(opacity);
+    this.setFillOpacity(opacity);
+    for (const child of this.children) child.setOpacity(opacity);
+    return this;
+  }
+
   setStrokeOpacity(opacity: number): this {
     const v = Math.max(0, Math.min(1, opacity));
     if (this._opacity !== v) {

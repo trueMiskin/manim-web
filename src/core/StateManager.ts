@@ -13,6 +13,7 @@
 import * as THREE from 'three';
 import { Mobject, MobjectStyle } from './Mobject';
 import { VMobject, Point } from './VMobject';
+import { VGroup } from './VGroup';
 
 // ---------------------------------------------------------------------------
 // Serializable state interfaces
@@ -93,7 +94,7 @@ export interface SceneSnapshot {
  * @param mob - The mobject to serialize
  * @returns A deep, JSON-safe MobjectState
  */
-export function serializeMobject(mob: Mobject): MobjectState {
+export function serializeMobject(mob: Mobject, recursive = true): MobjectState {
   const state: MobjectState = {
     id: mob.id,
     position: [mob.position.x, mob.position.y, mob.position.z],
@@ -114,15 +115,16 @@ export function serializeMobject(mob: Mobject): MobjectState {
   };
 
   // VMobject-specific properties
-  if (mob instanceof VMobject) {
+  // VGroup points are derived from its children, not geometry owned by the group.
+  if (mob instanceof VMobject && !(mob instanceof VGroup)) {
     state.points2D = mob.points.map((p) => ({ x: p.x, y: p.y }));
     state.points3D = mob.getLocalPoints().map((p) => [...p]);
     state.visiblePointCount = mob.getVisiblePointCount();
   }
 
   // Recursively capture children
-  for (const child of mob.children) {
-    state.children.push(serializeMobject(child));
+  if (recursive) {
+    for (const child of mob.children) state.children.push(serializeMobject(child));
   }
 
   return state;
@@ -162,7 +164,7 @@ export function deserializeMobject(mob: Mobject, state: MobjectState): void {
   mob.setStyle(state.style);
 
   // VMobject-specific
-  if (mob instanceof VMobject) {
+  if (mob instanceof VMobject && !(mob instanceof VGroup)) {
     if (state.points3D && state.points3D.length > 0) {
       mob.setPoints(state.points3D);
     } else if (state.points2D && state.points2D.length > 0) {
