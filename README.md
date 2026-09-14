@@ -88,6 +88,12 @@ async function squareToCircle(scene: Scene) {
 See the [docs and examples](https://maloyan.github.io/manim-web/) for more, including a
 [molecular and maps gallery](https://maloyan.github.io/manim-web/examples/molecular).
 
+## Presentations
+
+The optional `manim-web/reveal` integration turns authored animation checkpoints into native Reveal topics and vertical slides. It includes selectable text, speaker notes, portable static builds, and a shared native print/PDF handout.
+
+Start with the [basic presentation](examples/presentations/basic/main.ts) for static bullets, text animations and a moving point with live values, explore [text and mixed media](examples/presentations/README.md), or see the [16-checkpoint tech demo](examples/presentations/tech-demo/README.md), covering shape and formula morphs, bouncing rays, deforming surfaces and scientific data in eight short topics. The [presentation guide](examples/presentations/README.md) documents `slides init`, `dev`, `build`, and `pdf`.
+
 ## What You Can Build
 
 <table>

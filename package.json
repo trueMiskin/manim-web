@@ -79,7 +79,7 @@
     "prepare": "husky",
     "typecheck:presentations": "tsc -p tsconfig.presentations.json --noEmit",
     "test:presentations": "playwright test -c playwright.presentations.config.ts",
-    "test:defense": "node scripts/qualify-defense.mjs"
+    "test:tech-demo": "node scripts/qualify-tech-demo.mjs && node scripts/test-presentation-cache.mjs"
   },
   "lint-staged": {
     "*.{ts,tsx}": [
