@@ -32,6 +32,41 @@ import { buildMeshStrokeGeometry } from './VMobjectStrokeGeometry';
  * pipeline: getVisiblePoints(), getVisiblePoints3D(), etc.
  */
 export abstract class VMobjectRendering extends Mobject {
+  override captureState(): Record<string, unknown> {
+    const material = this._strokeMaterial;
+    return {
+      ...super.captureState(),
+      strokeDash: material
+        ? {
+            dashed: material.dashed,
+            dashScale: material.dashScale,
+            dashSize: material.dashSize,
+            gapSize: material.gapSize,
+            dashOffset: material.dashOffset,
+          }
+        : null,
+    };
+  }
+
+  override restoreCapturedState(state: Record<string, unknown>): void {
+    super.restoreCapturedState(state);
+    const material = this._strokeMaterial;
+    if (!material || !('strokeDash' in state)) return;
+    const dash = state.strokeDash as {
+      dashed: boolean;
+      dashScale: number;
+      dashSize: number;
+      gapSize: number;
+      dashOffset: number;
+    } | null;
+    material.dashed = dash?.dashed ?? false;
+    material.dashScale = dash?.dashScale ?? 1;
+    material.dashSize = dash?.dashSize ?? 1;
+    material.gapSize = dash?.gapSize ?? 1;
+    material.dashOffset = dash?.dashOffset ?? 0;
+    material.needsUpdate = true;
+  }
+
   /** Three.js stroke material (Line2 LineMaterial for thick strokes) */
   protected _strokeMaterial: LineMaterial | null = null;
 
