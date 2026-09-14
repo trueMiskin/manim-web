@@ -124,3 +124,4 @@ export {
   type TitleOptions,
   type MarkdownTextOptions,
 } from './TextExtensions';
+export { fontFamilyForUrl, loadFontFace, preloadTextFonts } from './TextFont';

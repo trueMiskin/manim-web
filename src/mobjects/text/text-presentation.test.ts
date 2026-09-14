@@ -4,8 +4,8 @@ import { Text } from './Text';
 import { Paragraph } from './Paragraph';
 import { MarkupText } from './MarkupText';
 import { Group } from '../../core/Group';
-import { Transform } from '../../animation/transform/Transform';
-import { MeshBasicMaterial } from 'three';
+import { ReplacementTransform, Transform } from '../../animation/transform/Transform';
+import { Box3, MeshBasicMaterial, Vector3 } from 'three';
 import { AddTextLetterByLetter, RemoveTextLetterByLetter } from '../../animation/creation/Create';
 import { AddTextWordByWord } from '../../animation/creation/CreationExtensions';
 import { splitTexGroups, textGraphemes } from './TextSemantics';
@@ -37,6 +37,22 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('presentation text', () => {
+  // MIGRATION: replacement targets retain their rendered bounds after readiness,
+  // for every pair of source/target text lengths and font sizes.
+  it('preserves replacement text dimensions when ready geometry is rebuilt', async () => {
+    const source = new Text({ text: 'Acoustic Room Design', fontSize: 24 });
+    const target = new Text({ text: 'Concave Lens (Diverging rays)', fontSize: 22 });
+    const size = () => new Box3().setFromObject(target.getThreeObject()).getSize(new Vector3());
+    const expected = size();
+    const animation = new ReplacementTransform(source, target);
+    animation.begin();
+    animation.interpolate(1);
+    animation.finish();
+    await target.waitForRender();
+    expect(size().x).toBeCloseTo(expected.x);
+    expect(size().y).toBeCloseTo(expected.y);
+  });
+
   // MIGRATION: every restored text state renders from its own logical canvas, independent of morph targets.
   it('keeps transformed textures independent when checkpoints restore source and target labels', () => {
     const source = new Text({ text: 'Order = 0' });

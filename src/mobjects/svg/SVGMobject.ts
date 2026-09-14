@@ -84,12 +84,12 @@ function parseSVGPath(d: string): SVGPoint[][] {
 
   for (const cmd of commands) {
     const type = cmd[0];
-    const args = cmd
-      .slice(1)
-      .trim()
-      .split(/[\s,]+/)
-      .filter((s) => s)
-      .map(parseFloat);
+    // SVG permits a sign or a second decimal point to separate numbers without
+    // whitespace (e.g. Font Awesome's "c3.1-.6"). Splitting only on whitespace
+    // loses coordinates and introduces NaN control points downstream.
+    const args = (cmd.slice(1).match(/[-+]?(?:\d*\.\d+|\d+\.?\d*)(?:[eE][-+]?\d+)?/g) || []).map(
+      Number,
+    );
     const isRelative = type === type.toLowerCase();
 
     switch (type.toUpperCase()) {

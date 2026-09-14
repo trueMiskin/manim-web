@@ -276,6 +276,12 @@ export class MathTex extends VGroup {
     return this._renderError;
   }
 
+  /** Preserve pending placement when a containing Group normalizes before SVG readiness. */
+  override normalizeTransform(worldMatrix: THREE.Matrix4 = this._ownMatrix()): this {
+    if (this.children.length === 0) return this._flattenAsMesh(worldMatrix);
+    return super.normalizeTransform(worldMatrix);
+  }
+
   /**
    * World-space center. Unlike the base VGroup, an empty (not-yet-rendered)
    * MathTex falls back to its world-space origin instead of throwing: MathTex is

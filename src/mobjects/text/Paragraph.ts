@@ -364,6 +364,7 @@ export class Paragraph extends Text {
       height,
       font: {
         family: this._fontFamily,
+        url: this._fontUrl,
         size: this._fontSize,
         weight: this._fontWeight,
         style: this._fontStyle,

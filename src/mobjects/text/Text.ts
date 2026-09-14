@@ -375,6 +375,7 @@ export class Text extends TexturedMobject {
       text: this._text,
       fontSize: this._fontSize,
       fontFamily: this._fontFamily,
+      fontUrl: this._fontUrl ?? null,
       fontWeight: this._fontWeight,
       fontStyle: this._fontStyle,
       lineHeight: this._lineHeight,
@@ -395,6 +396,8 @@ export class Text extends TexturedMobject {
     this._text = state.text;
     if (typeof state.fontSize === 'number') this._fontSize = state.fontSize;
     if (typeof state.fontFamily === 'string') this._fontFamily = state.fontFamily;
+    if ('fontUrl' in state)
+      this._fontUrl = typeof state.fontUrl === 'string' ? state.fontUrl : undefined;
     if (typeof state.fontWeight === 'string' || typeof state.fontWeight === 'number')
       this._fontWeight = state.fontWeight;
     if (typeof state.fontStyle === 'string') this._fontStyle = state.fontStyle;
@@ -466,6 +469,7 @@ export class Text extends TexturedMobject {
         sourceOffset: start,
         font: {
           family: this._fontFamily,
+          url: this._fontUrl,
           size: this._fontSize,
           weight: this._fontWeight,
           style: this._fontStyle,
@@ -956,7 +960,10 @@ export class Text extends TexturedMobject {
   /** Wait for CSS font metrics before layout inspection or capture. */
   async waitForRender(): Promise<void> {
     if (this._fontUrl) {
-      const familyName = await loadFontFace(this._fontUrl);
+      const familyName = await loadFontFace(this._fontUrl, undefined, {
+        weight: this._fontWeight,
+        style: this._fontStyle,
+      });
       if (familyName) this._fontFamily = `'${familyName}'`;
     }
     if (typeof document !== 'undefined' && typeof document.fonts?.load === 'function') {
@@ -1002,7 +1009,10 @@ export class Text extends TexturedMobject {
 
     // Load the font URL as a CSS @font-face (cached across all Text instances)
     // so the Canvas 2D renderer uses the same font file as the opentype.js glyph strokes.
-    const familyName = await loadFontFace(this._fontUrl!);
+    const familyName = await loadFontFace(this._fontUrl!, undefined, {
+      weight: this._fontWeight,
+      style: this._fontStyle,
+    });
     if (initialKey !== this._getGlyphCacheKey() || revision !== this._glyphRevision) return null;
     // `loadFontFace` returns '' when the CSS Font Loading API is unavailable
     // (non-DOM, or DOM emulator without `document.fonts`); keep the existing

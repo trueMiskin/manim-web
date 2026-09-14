@@ -1,9 +1,9 @@
 /**
  * MathJaxRenderer - LaTeX rendering via MathJax SVG output.
  *
- * MathJax supports virtually all LaTeX commands and packages (including
- * chemfig, tikz, custom macros, \usepackage, \begin{align}, etc.).
- * It runs entirely in the browser and produces SVG output.
+ * The bundled renderer supports base TeX, AMS, newcommand and configured macros.
+ * It runs in the browser and produces SVG output; Python LaTeX packages such
+ * as TikZ and chemfig are not implied by MathJax compatibility.
  *
  * This renderer is used as a fallback when KaTeX cannot handle the input,
  * or when explicitly requested via `renderer: 'mathjax'`.
@@ -91,6 +91,7 @@ interface MathJaxSingleton {
     options: Record<string, unknown>,
   ) => {
     convert: (input: string, options: Record<string, unknown>) => unknown;
+    convertPromise?: (input: string, options: Record<string, unknown>) => Promise<unknown>;
   };
   /** Internal registry the npm path uses to assert handler registration. */
   handlers?: { [Symbol.iterator]?: () => Iterator<unknown> };
@@ -101,6 +102,7 @@ interface MathJaxModuleNpm {
   mathjax: MathJaxSingleton;
   TeX: MathJaxConstructor;
   SVG: MathJaxConstructor;
+  fontData: unknown;
   adaptor: LiteAdaptor;
 }
 
@@ -199,6 +201,7 @@ async function loadMathJax(): Promise<MathJaxModuleState> {
         mathjax,
         TeX: bundle.TeX as unknown as MathJaxConstructor,
         SVG: bundle.SVG as unknown as MathJaxConstructor,
+        fontData: bundle.BundledNewcmFont,
         adaptor,
         strategy: 'npm' as const,
       };
@@ -368,10 +371,12 @@ export async function renderLatexToSVG(
       packages: ['base', 'ams', 'newcommand', 'configmacros'],
       ...(Object.keys(macros).length > 0 ? { macros } : {}),
     });
-    const svg = new SVG({ fontCache: 'none' });
+    const svg = new SVG({ fontCache: 'none', fontData: mj.fontData });
     const html = MathJax.document('', { InputJax: tex, OutputJax: svg });
 
-    const node = html.convert(texString, { display: displayMode });
+    const node = html.convertPromise
+      ? await html.convertPromise(texString, { display: displayMode })
+      : html.convert(texString, { display: displayMode });
     svgString = adaptor.outerHTML(node as LiteElement);
 
     // Parse the string into a real SVGElement for downstream use

@@ -1937,6 +1937,7 @@ export {
 // Player
 export { Player, RecordingScene, type PlayerOptions } from './player';
 export type { SemanticTextRun } from './mobjects/text/TextSemantics';
+export { fontFamilyForUrl, loadFontFace, preloadTextFonts } from './mobjects/text/TextFont';
 export { prepareMobjects } from './core/readiness';
 export {
   inspectSceneText,

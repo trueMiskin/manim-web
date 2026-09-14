@@ -1070,6 +1070,7 @@ export class MarkupText extends Text {
           height: lineHeight,
           font: {
             family: seg.fontFamily ?? this._fontFamily,
+            url: seg.fontFamily ? undefined : this._fontUrl,
             size: this._resolveSegmentFontSize(seg),
             weight: seg.fontWeight ?? this._fontWeight,
             style: seg.fontStyle ?? this._fontStyle,
