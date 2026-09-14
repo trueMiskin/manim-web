@@ -1,0 +1,78 @@
+import {
+  Create,
+  DashedLine,
+  FadeIn,
+  GrowFromCenter,
+  MoveAlongPath,
+  Star,
+  TransformFromCopy,
+  linear,
+} from '../../../../src';
+import type { SceneDefinition } from '../../../../src/reveal/types';
+import { addVec } from '../../../../src/utils/vectors';
+import { C, heading, label } from './common';
+import { INITIAL_RX, INITIAL_TX, reflectionPath } from './billiard-geometry';
+import { billiardTable } from './billiard-table';
+
+export default {
+  options: { backgroundColor: C.bg },
+  async build(scene) {
+    const table = billiardTable([0, 0.5, 0], 1);
+    const reflection = reflectionPath(INITIAL_TX, ['bottom']);
+    const virtual = table.marker(reflection.images[1]);
+    const virtualLabel = label(
+      'TX′',
+      18,
+      C.cyan,
+      addVec(table.project(reflection.images[1]), [0, -0.27, 0]),
+    );
+    const construction = new DashedLine({
+      start: table.project(INITIAL_RX),
+      end: table.project(reflection.images[1]),
+      color: C.cyan,
+      strokeWidth: 2.5,
+    });
+    const bounce = new Star({
+      numPoints: 5,
+      outerRadius: 0.15,
+      innerRadius: 0.07,
+      color: C.amber,
+      fillOpacity: 1,
+    }).moveTo(table.project(reflection.bounces[0]));
+    const ray = table.path(reflection.points, C.green, 3.5);
+
+    await scene.step(
+      {
+        id: 'reflections-construction',
+        title: 'Construct a reflected path',
+        notes:
+          'Mirror the transmitter and connect the virtual point to the receiver to locate the bounce.',
+      },
+      async () => {
+        await scene.play(
+          new FadeIn(heading('Geometry and paths')),
+          new FadeIn(
+            label('Mirror a point, construct a path, follow it', 22, C.muted, [0, -3.2, 0]),
+          ),
+          new FadeIn(table.objects),
+        );
+        await scene.play(new TransformFromCopy(table.cue, virtual), new FadeIn(virtualLabel));
+        await scene.play(new Create(construction), new GrowFromCenter(bounce), new Create(ray));
+      },
+    );
+    await scene.step(
+      {
+        id: 'reflections-motion',
+        title: 'Move along the path',
+        notes: 'The cue ball follows the complete two-segment reflected path at a constant speed.',
+      },
+      async () => {
+        await scene.play(construction.animate.setStyle({ strokeOpacity: 0.2 }).withDuration(0.3));
+        scene.scene.addForegroundMobject(table.cue);
+        await scene.play(
+          new MoveAlongPath(table.cue, { path: ray, duration: 2, rateFunc: linear }),
+        );
+      },
+    );
+  },
+} satisfies SceneDefinition;

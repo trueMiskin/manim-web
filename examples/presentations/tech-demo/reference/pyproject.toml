@@ -1,0 +1,10 @@
+[project]
+name = "manim-tech-demo"
+version = "0.1.0"
+description = "A compact 16-checkpoint Manim technology demo"
+requires-python = ">=3.11"
+dependencies = [
+  "manim>=0.20.1",
+  "manim-slides[manim,pyside6]==5.6.0",
+  "numpy>=2",
+]

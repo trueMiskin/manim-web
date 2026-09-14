@@ -19,6 +19,13 @@ coverage/
 !.env.example
 playwright-report/
 test-results/
+qualification-results/
+.venv-defense-data/
+examples/presentations/tech-demo/**/__pycache__/
 thoughts/
 .claude
 .desloppify/
+examples/presentations/tech-demo/reference/.venv/
+examples/presentations/tech-demo/reference/media/
+examples/presentations/tech-demo/reference/slides/
+examples/presentations/**/*.pdf
