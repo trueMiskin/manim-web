@@ -1,11 +1,15 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process';
+import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
+import { performance } from 'node:perf_hooks';
+import process from 'node:process';
 import { cp, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
 import { dirname, extname, join, relative, resolve, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL, URL } from 'node:url';
+import { parseArgs } from 'node:util';
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const [command, ...args] = process.argv.slice(2);
@@ -87,12 +91,17 @@ const mimeTypes = {
   '.mp4': 'video/mp4',
 };
 
-async function serve(directory) {
+async function serve(directory, basePath = '/') {
   const root = resolve(directory);
   const server = createServer(async (request, response) => {
     try {
       const pathname = decodeURIComponent(new URL(request.url, 'http://localhost').pathname);
-      const file = resolve(root, `.${pathname.endsWith('/') ? pathname + 'index.html' : pathname}`);
+      if (!pathname.startsWith(basePath)) throw new Error('Invalid base path');
+      const localPath = pathname.slice(basePath.length);
+      const file = resolve(
+        root,
+        localPath.endsWith('/') || !localPath ? localPath + 'index.html' : localPath,
+      );
       if (relative(root, file).startsWith('..')) throw new Error('Invalid path');
       const body = await readFile(file);
       response.writeHead(200, {
@@ -110,14 +119,14 @@ async function serve(directory) {
   });
   const address = server.address();
   return {
-    url: `http://127.0.0.1:${address.port}`,
+    url: `http://127.0.0.1:${address.port}${basePath.slice(0, -1)}`,
     close: () => new Promise((done) => server.close(done)),
   };
 }
 
-async function withBrowser(directory, action) {
+async function withBrowser(directory, action, basePath = '/') {
   const { chromium } = projectRequire()('@playwright/test');
-  const server = await serve(directory);
+  const server = await serve(directory, basePath);
   let browser;
   try {
     const explicitBrowser = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
@@ -145,65 +154,136 @@ async function withBrowser(directory, action) {
 
 async function ready(page) {
   await page.waitForFunction(
-    () => window.__MANIM_PRESENTATION__?.ready || window.__MANIM_PRESENTATION__?.error,
+    () => globalThis.__MANIM_PRESENTATION__?.ready || globalThis.__MANIM_PRESENTATION__?.error,
     undefined,
     { timeout: 300000 },
   );
-  const error = await page.evaluate(() => window.__MANIM_PRESENTATION__.error);
+  const error = await page.evaluate(() => globalThis.__MANIM_PRESENTATION__.error);
   if (error) throw new Error(error);
 }
 
 async function build(viteArguments = []) {
-  await vite(['build', ...viteArguments]);
-  const directory = resolve('dist');
-  await stat(join(directory, 'index.html'));
-  await withBrowser(directory, async (page, url) => {
-    await page.goto(`${url}/?manim-capture=1`);
-    await ready(page);
-    const assets = await page.evaluate(() => window.__MANIM_PRESENTATION__.exportAssets());
-    const imageDirectory = join(directory, 'assets/manim');
-    await mkdir(imageDirectory, { recursive: true });
-    for (const scene of Object.values(assets.scenes)) {
-      for (const snapshot of Object.values(scene.snapshots)) {
-        for (const run of snapshot.text) {
-          if (run.font.url) {
-            const font = new URL(run.font.url, url);
-            if (font.origin === url) run.font.url = `.${font.pathname}${font.search}`;
-          }
-        }
-        const data = /^data:image\/(png|webp|jpeg);base64,(.+)$/s.exec(snapshot.image);
-        if (!data) continue;
-        const bytes = Buffer.from(data[2], 'base64');
-        const name = `${createHash('sha256').update(bytes).digest('hex').slice(0, 20)}.${data[1]}`;
-        await writeFile(join(imageDirectory, name), bytes);
-        snapshot.image = `./assets/manim/${name}`;
-      }
-    }
-    await writeFile(join(directory, 'manim-handout.json'), JSON.stringify(assets));
-    process.stdout.write(
-      `Prepared ${Object.values(assets.scenes).reduce((sum, scene) => sum + scene.checkpoints.length, 0)} animated handout states.\n`,
-    );
+  const started = performance.now();
+  const { values, positionals } = parseArgs({
+    args: viteArguments,
+    allowPositionals: true,
+    options: {
+      config: { type: 'string', short: 'c' },
+      mode: { type: 'string', short: 'm' },
+      base: { type: 'string' },
+      outDir: { type: 'string' },
+      target: { type: 'string' },
+      emptyOutDir: { type: 'boolean' },
+    },
   });
+  if (positionals.length > 1) throw new Error('slides build accepts at most one project root.');
+  const { build: viteBuild } = await import(pathToFileURL(projectRequire().resolve('vite')).href);
+  let resolvedConfig;
+  await viteBuild({
+    ...(positionals[0] ? { root: resolve(positionals[0]) } : {}),
+    ...(values.config ? { configFile: resolve(values.config) } : {}),
+    ...(values.mode ? { mode: values.mode } : {}),
+    ...(values.base ? { base: values.base } : {}),
+    build: Object.fromEntries(
+      ['outDir', 'target', 'emptyOutDir']
+        .filter((key) => values[key] !== undefined)
+        .map((key) => [key, values[key]]),
+    ),
+    plugins: [
+      {
+        name: 'manim-presentation-output',
+        configResolved(config) {
+          resolvedConfig = config;
+        },
+      },
+    ],
+  });
+  const bundled = performance.now();
+  const directory = resolve(resolvedConfig.root, resolvedConfig.build.outDir);
+  const basePath = resolvedConfig.base.startsWith('.')
+    ? '/'
+    : new URL(resolvedConfig.base, 'http://localhost').pathname;
+  await stat(join(directory, 'index.html'));
+  await withBrowser(
+    directory,
+    async (page, url) => {
+      await page.goto(`${url}/?manim-capture=1`);
+      await ready(page);
+      const assets = await page.evaluate(() => globalThis.__MANIM_PRESENTATION__.exportAssets());
+      const imageDirectory = join(directory, 'assets/manim');
+      await mkdir(imageDirectory, { recursive: true });
+      for (const scene of Object.values(assets.scenes)) {
+        for (const snapshot of Object.values(scene.snapshots)) {
+          for (const run of snapshot.text) {
+            if (run.font.url) {
+              const font = new URL(run.font.url, `${url}/`);
+              if (font.origin === new URL(url).origin) {
+                if (!font.pathname.startsWith(basePath))
+                  throw new Error(`Font is outside the built site's base path: ${font.pathname}`);
+                run.font.url = `./${font.pathname.slice(basePath.length)}${font.search}`;
+              }
+            }
+          }
+          const data = /^data:image\/(png|webp|jpeg);base64,(.+)$/s.exec(snapshot.image);
+          if (!data) continue;
+          const bytes = Buffer.from(data[2], 'base64');
+          const name = `${createHash('sha256').update(bytes).digest('hex').slice(0, 20)}.${data[1]}`;
+          await writeFile(join(imageDirectory, name), bytes);
+          snapshot.image = `./assets/manim/${name}`;
+        }
+      }
+      await writeFile(join(directory, 'manim-handout.json'), JSON.stringify(assets));
+      const checkpoints = Object.values(assets.scenes).reduce(
+        (sum, scene) => sum + scene.checkpoints.length,
+        0,
+      );
+      await writeFile(
+        join(directory, 'manim-build-report.json'),
+        JSON.stringify(
+          {
+            scenes: Object.keys(assets.scenes).length,
+            checkpoints,
+            bundleMs: bundled - started,
+            preparationMs: performance.now() - bundled,
+            totalMs: performance.now() - started,
+          },
+          null,
+          2,
+        ) + '\n',
+      );
+      process.stdout.write(`Prepared ${checkpoints} animated handout states.\n`);
+    },
+    basePath,
+  );
+  return { directory, basePath };
 }
 
-async function pdf(filename = 'presentation.pdf') {
-  await build();
-  await withBrowser(resolve('dist'), async (page, url) => {
-    await page.goto(`${url}/?manim-print=1`);
-    await ready(page);
-    await page.pdf({ path: resolve(filename), printBackground: true, preferCSSPageSize: true });
-    process.stdout.write(`Wrote ${resolve(filename)}\n`);
-  });
+async function pdf(filename = 'presentation.pdf', viteArguments = []) {
+  const { directory, basePath } = await build(viteArguments);
+  await withBrowser(
+    directory,
+    async (page, url) => {
+      await page.goto(`${url}/?manim-print=1`);
+      await ready(page);
+      await page.pdf({ path: resolve(filename), printBackground: true, preferCSSPageSize: true });
+      process.stdout.write(`Wrote ${resolve(filename)}\n`);
+    },
+    basePath,
+  );
 }
 
 try {
   if (command === 'init') await init(args[0]);
   else if (command === 'dev') await vite(args);
   else if (command === 'build') await build(args);
-  else if (command === 'pdf') await pdf(args[0]);
+  else if (command === 'pdf')
+    await pdf(
+      args[0]?.startsWith('-') ? undefined : args[0],
+      args[0]?.startsWith('-') ? args : args.slice(1),
+    );
   else
     process.stdout.write(
-      'Usage: slides init [directory] | dev [vite options] | build | pdf [filename]\n',
+      'Usage: slides init [directory] | dev [vite options] | build [root] [--config file] [--mode mode] [--base path] [--outDir directory] | pdf [filename] [build options]\n',
     );
 } catch (error) {
   process.stderr.write(`${error.message}\n`);
