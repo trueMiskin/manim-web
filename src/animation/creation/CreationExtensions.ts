@@ -8,11 +8,14 @@ import { VMobject } from '../../core/VMobject';
 import { Animation, AnimationOptions } from '../Animation';
 import { Line2 } from 'three/examples/jsm/lines/Line2.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
+import { textGraphemes } from '../../mobjects/text/TextSemantics';
 
 /** Interface for mobjects that support getText/setText */
 interface TextLikeMobject {
   getText(): string;
+  getTextContent?(): string;
   setText(text: string): void;
+  setVisibleRange?(start: number, end: number): void;
 }
 
 /** Type guard for text-like mobjects */
@@ -42,34 +45,46 @@ export interface AddTextWordByWordOptions extends AnimationOptions {
 export class AddTextWordByWord extends Animation {
   readonly timePerWord: number;
   private _fullText: string = '';
-  private _words: string[] = [];
+  private _wordEnds: number[] = [];
 
   constructor(mobject: Mobject, options: AddTextWordByWordOptions = {}) {
-    super(mobject, options);
-    this.timePerWord = options.timePerWord ?? 0.2;
+    const timePerWord = options.timePerWord ?? 0.2;
+    const words = hasTextMethods(mobject)
+      ? Array.from((mobject.getTextContent?.() ?? mobject.getText()).matchAll(/\S+\s*/gu)).length
+      : undefined;
+    super(mobject, {
+      ...options,
+      duration: options.duration ?? (words === undefined ? 1 : words * timePerWord),
+    });
+    this.timePerWord = timePerWord;
   }
 
   override begin(): void {
     super.begin();
     if (hasTextMethods(this.mobject)) {
-      this._fullText = this.mobject.getText();
-      this._words = this._fullText.split(/\s+/).filter((w) => w.length > 0);
-      this.mobject.setText('');
+      this._fullText = this.mobject.getTextContent?.() ?? this.mobject.getText();
+      this._wordEnds = Array.from(
+        this._fullText.matchAll(/\S+\s*/gu),
+        (match) => match.index! + match[0].length,
+      );
+      this.interpolate(0);
     }
   }
 
   interpolate(alpha: number): void {
-    if (hasTextMethods(this.mobject) && this._words.length > 0) {
-      const numWords = Math.floor(alpha * this._words.length);
-      const text = this._words.slice(0, numWords).join(' ');
-      this.mobject.setText(text);
+    if (!hasTextMethods(this.mobject)) return;
+    const count = Math.floor(Math.max(0, Math.min(1, alpha)) * this._wordEnds.length);
+    const end = alpha >= 1 ? this._fullText.length : (this._wordEnds[count - 1] ?? 0);
+    const visible = this._fullText.slice(0, end);
+    if (typeof this.mobject.setVisibleRange === 'function') {
+      this.mobject.setVisibleRange(0, textGraphemes(visible).length);
+    } else {
+      this.mobject.setText(visible);
     }
   }
 
   override finish(): void {
-    if (hasTextMethods(this.mobject)) {
-      this.mobject.setText(this._fullText);
-    }
+    this.interpolate(1);
     super.finish();
   }
 }

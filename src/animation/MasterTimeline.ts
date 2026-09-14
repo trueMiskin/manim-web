@@ -30,6 +30,12 @@ export interface Segment {
 }
 
 export interface Slide {
+  readonly id: string;
+  readonly title?: string;
+  readonly notes?: string;
+  readonly source?: string;
+  readonly playbackRate: number;
+  readonly printTime?: number;
   /** Index in the slides array */
   readonly index: number;
   /** First segment in this slide */
@@ -54,6 +60,13 @@ export interface Slide {
 }
 
 export interface SlideOptions {
+  id?: string;
+  title?: string;
+  notes?: string;
+  source?: string;
+  playbackRate?: number;
+  /** Absolute timeline time for a loop's designated print pose. */
+  printTime?: number;
   /** Replay this slide in slidesMode until the user advances. */
   loop?: boolean;
   /** Auto-advance to the next slide when this slide finishes (slidesMode only). */
@@ -61,6 +74,27 @@ export interface SlideOptions {
 }
 
 export class MasterTimeline extends Timeline {
+  private _evaluator?: (time: number, segmentIndex?: number, position?: 'start' | 'end') => void;
+
+  /** Install the controlled evaluator produced by sequential scene compilation. */
+  setEvaluator(
+    evaluator: (time: number, segmentIndex?: number, position?: 'start' | 'end') => void,
+  ): void {
+    this._evaluator = evaluator;
+  }
+
+  get isCompiled(): boolean {
+    return this._evaluator !== undefined;
+  }
+
+  /** Resolve adjacent or zero-duration checkpoints without timestamp ambiguity. */
+  seekSegment(index: number, position: 'start' | 'end'): void {
+    const segment = this._segments[index];
+    if (!segment) throw new Error(`Unknown segment: ${index}`);
+    this._currentTime = position === 'start' ? segment.startTime : segment.endTime;
+    if (this._evaluator) this._evaluator(this._currentTime, index, position);
+    else this.seek(this._currentTime);
+  }
   private _segments: Segment[] = [];
   private _slides: Slide[] = [];
   /**
@@ -88,6 +122,12 @@ export class MasterTimeline extends Timeline {
    * (e.g. a FadeOut'd mobject stays invisible when scrubbing back).
    */
   override seek(time: number): this {
+    if (this._evaluator) {
+      if (!Number.isFinite(time)) throw new Error('Timeline time must be finite.');
+      this._currentTime = Math.max(0, Math.min(time, this.getDuration()));
+      this._evaluator(this._currentTime);
+      return this;
+    }
     // Reset every segment's animations to pristine state
     for (const seg of this._segments) {
       for (const anim of seg.animations) {
@@ -129,6 +169,12 @@ export class MasterTimeline extends Timeline {
    * their segment boundary (not every frame).
    */
   override update(dt: number): void {
+    if (this._evaluator) {
+      if (!this._isPlaying) return;
+      this.seek(this._currentTime + dt);
+      if (this.isFinished()) this._isPlaying = false;
+      return;
+    }
     const prevTime = this.getCurrentTime();
 
     // Restore original opacity for hidden future mobjects before super.update()
@@ -320,6 +366,12 @@ export class MasterTimeline extends Timeline {
     // tell the same story.
     const autoNext = loop ? false : (opts.autoNext ?? false);
     return {
+      id: opts.id ?? `checkpoint-${this._slides.length}`,
+      title: opts.title,
+      notes: opts.notes,
+      source: opts.source,
+      playbackRate: opts.playbackRate ?? 1,
+      printTime: opts.printTime,
       index: this._slides.length,
       startSegmentIndex: start,
       endSegmentIndex: end,

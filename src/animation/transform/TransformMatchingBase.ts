@@ -23,8 +23,10 @@
  */
 
 import { VMobject } from '../../core/VMobject';
-import { Animation, AnimationOptions } from '../Animation';
+import { serializeMobject, deserializeMobject, type MobjectState } from '../../core/StateManager';
+import { Animation, AnimationOptions, type AnimationScene } from '../Animation';
 import { lerp, lerpPoint } from '../../utils/math';
+import { ownMatchingPart, removeMatchingParts, matchingFade } from './TransformMatchingShared';
 import { alignCompoundPathsForTransform } from '../../core/VMobjectTransformAlignment';
 
 export interface TransformMatchingBaseOptions extends AnimationOptions {
@@ -62,6 +64,7 @@ export abstract class TransformMatchingAbstractBase extends Animation {
   readonly fadeRatio: number;
 
   /** Matched parts that will transform */
+  private _sourceState: MobjectState | null = null;
   protected _matchedParts: MatchedPart[] = [];
 
   /** Source parts that will fade out (no match in target) */
@@ -150,12 +153,7 @@ export abstract class TransformMatchingAbstractBase extends Animation {
     for (let i = 0; i < targetParts.length; i++) {
       if (!usedTargetIndices.has(i)) {
         const vmob = targetParts[i];
-        const copy = vmob.copy() as VMobject;
-        copy.opacity = 0;
-        const parent = this.mobject.parent;
-        if (parent) {
-          parent.add(copy);
-        }
+        const copy = ownMatchingPart(this.mobject, vmob);
         this._fadeInParts.push({
           mobject: copy,
           fadeIn: true,
@@ -218,8 +216,33 @@ export abstract class TransformMatchingAbstractBase extends Animation {
   }
 
   override begin(): void {
+    removeMatchingParts(this._fadeInParts);
+    this._matchedParts = [];
+    this._fadeOutParts = [];
+    this._fadeInParts = [];
+    this._sourceState ??= serializeMobject(this.mobject);
     super.begin();
     this._matchParts();
+  }
+
+  override reset(): void {
+    removeMatchingParts(this._fadeInParts);
+    this._fadeInParts = [];
+    super.reset();
+    if (this._sourceState) deserializeMobject(this.mobject, this._sourceState);
+  }
+
+  override cleanUpFromScene(scene: AnimationScene): void {
+    removeMatchingParts(this._fadeInParts);
+    this._fadeInParts = [];
+    const parent = this.mobject.parent;
+    if (parent) {
+      parent.remove(this.mobject);
+      parent.add(this.target);
+    } else {
+      scene.remove(this.mobject);
+      scene.add(this.target);
+    }
   }
 
   interpolate(alpha: number): void {
@@ -236,9 +259,7 @@ export abstract class TransformMatchingAbstractBase extends Animation {
 
     // Handle fading parts with adjusted timing
     // Fade out happens in first portion, fade in happens in last portion
-    const fadeOutAlpha = Math.min(1, alpha / this.fadeRatio);
-    const fadeInStart = 1 - this.fadeRatio;
-    const fadeInAlpha = Math.max(0, (alpha - fadeInStart) / this.fadeRatio);
+    const [fadeOutAlpha, fadeInAlpha] = matchingFade(alpha, this.fadeRatio);
 
     for (const part of this._fadeOutParts) {
       part.mobject.opacity = lerp(part.startOpacity, 0, Math.min(1, fadeOutAlpha));

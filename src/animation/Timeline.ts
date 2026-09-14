@@ -30,10 +30,10 @@ export class Timeline {
   private _duration: number = 0;
 
   /** Current playback time */
-  private _currentTime: number = 0;
+  protected _currentTime: number = 0;
 
   /** Whether the timeline is playing */
-  private _isPlaying: boolean = false;
+  protected _isPlaying: boolean = false;
 
   /** Track which animations have been started */
   protected _startedAnimations: Set<Animation> = new Set();

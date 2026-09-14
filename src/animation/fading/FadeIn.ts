@@ -8,6 +8,7 @@ import { Mobject } from '../../core/Mobject';
 import { Animation, AnimationOptions } from '../Animation';
 
 export class FadeIn extends Animation {
+  private _targetOpacity = 1;
   private _shift: [number, number, number] | null;
   private _startX: number = 0;
   private _startY: number = 0;
@@ -26,6 +27,7 @@ export class FadeIn extends Animation {
    */
   override begin(): void {
     super.begin();
+    this._targetOpacity = this.mobject.opacity;
 
     // Store the target (final) position
     this._targetX = this.mobject.position.x;
@@ -49,7 +51,7 @@ export class FadeIn extends Animation {
    * Interpolate opacity from 0 to 1 and position from start to target
    */
   interpolate(alpha: number): void {
-    this.mobject.opacity = alpha;
+    this.mobject.opacity = this._targetOpacity * alpha;
 
     if (this._shift) {
       this.mobject.position.set(
@@ -64,7 +66,7 @@ export class FadeIn extends Animation {
    * Ensure the mobject is fully visible and at target position
    */
   override finish(): void {
-    this.mobject.opacity = 1;
+    this.mobject.opacity = this._targetOpacity;
     if (this._shift) {
       this.mobject.position.set(this._targetX, this._targetY, this._targetZ);
     }

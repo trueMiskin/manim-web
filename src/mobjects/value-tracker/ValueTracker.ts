@@ -69,6 +69,14 @@ export interface ValueTrackerOptions {
  * changing value.
  */
 export class ValueTracker extends Mobject {
+  override captureState(): Record<string, unknown> {
+    return { value: this._value };
+  }
+
+  override restoreCapturedState(state: Record<string, unknown>): void {
+    this.setValue(state.value as number);
+  }
+
   override normalizeTransform(worldMatrix: THREE.Matrix4 = this._ownMatrix()): this {
     return this._flattenAsContainer(worldMatrix);
   }

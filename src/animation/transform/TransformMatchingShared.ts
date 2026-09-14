@@ -4,6 +4,8 @@
 
 import { Vector3Tuple } from '../../core/Mobject';
 import { VMobject } from '../../core/VMobject';
+import * as THREE from 'three';
+import type { Mobject } from '../../core/Mobject';
 
 // ============================================================================
 // MatchingPart - tracks a matched pair of shapes during animation
@@ -24,6 +26,49 @@ export interface FadingPart {
   fadeIn: boolean; // true = fade in, false = fade out
   startOpacity: number;
   targetOpacity: number;
+}
+
+/** Attach temporary target geometry to the animated source, preserving its world frame. */
+export function ownMatchingPart(source: Mobject, target: VMobject): VMobject {
+  const targetObject = target._syncWorldMatrices();
+  const sourceObject = source._syncWorldMatrices();
+  const local = sourceObject.matrixWorld.clone().invert().multiply(targetObject.matrixWorld);
+  const copy = target.copy() as VMobject;
+  const quaternion = new THREE.Quaternion();
+  local.decompose(copy.position, quaternion, copy.scaleVector);
+  copy.rotation.setFromQuaternion(quaternion);
+  copy.opacity = 0;
+  source.add(copy);
+  return copy;
+}
+
+export function removeMatchingParts(parts: FadingPart[]): void {
+  for (const part of parts) {
+    part.mobject.parent?.remove(part.mobject);
+    part.mobject.dispose();
+  }
+}
+
+export function matchingFade(alpha: number, ratio: number): [number, number] {
+  if (ratio === 0) return [alpha > 0 ? 1 : 0, alpha >= 1 ? 1 : 0];
+  return [Math.min(1, alpha / ratio), Math.max(0, (alpha - (1 - ratio)) / ratio)];
+}
+
+/** Express the target leaf path in the source leaf's frame without changing its transform. */
+export function matchingLeafCopies(source: VMobject, target: VMobject): [VMobject, VMobject] {
+  const sourceObject = source._syncWorldMatrices();
+  const targetObject = target._syncWorldMatrices();
+  const matrix = sourceObject.matrixWorld.clone().invert().multiply(targetObject.matrixWorld);
+  const sourceCopy = source.copy() as VMobject;
+  const targetCopy = target.copy() as VMobject;
+  targetCopy.setPoints(
+    target
+      .getLocalPoints()
+      .map((point) =>
+        new THREE.Vector3(point[0], point[1], point[2]).applyMatrix4(matrix).toArray(),
+      ),
+  );
+  return [sourceCopy, targetCopy];
 }
 
 // ============================================================================

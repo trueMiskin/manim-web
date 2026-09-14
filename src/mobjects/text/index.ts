@@ -7,6 +7,12 @@
 
 // Text - Basic text rendering
 export { Text, type TextOptions } from './Text';
+export {
+  textGraphemes,
+  splitTexGroups,
+  type SemanticTextRun,
+  type Grapheme,
+} from './TextSemantics';
 
 // Glyph vector extraction (for stroke-draw animation)
 export { GlyphVMobject, type GlyphVMobjectOptions } from './GlyphVMobject';

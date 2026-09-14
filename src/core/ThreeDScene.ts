@@ -282,6 +282,19 @@ export class ThreeDScene extends Scene {
     return this._camera3D;
   }
 
+  getFixedInFrameMobjects(): readonly Mobject[] {
+    return [...this._fixedMobjects, ...this._pendingFixedMode.keys()];
+  }
+
+  override getCameraForMobject(mobject: Mobject): THREE.Camera {
+    let object: Mobject | null = mobject;
+    while (object) {
+      if (this._fixedMobjects.has(object)) return this._hudCamera;
+      object = object.parent;
+    }
+    return this._camera3D.getCamera();
+  }
+
   /**
    * Get the lighting system.
    */

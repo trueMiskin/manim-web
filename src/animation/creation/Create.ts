@@ -14,6 +14,7 @@ import { Line2 } from 'three/examples/jsm/lines/Line2.js';
 import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 import type { TextGlyphGroup } from '../../mobjects/text/TextGlyphGroup';
 import type { GlyphVMobject } from '../../mobjects/text/GlyphVMobject';
+import { textGraphemes } from '../../mobjects/text/TextSemantics';
 
 /**
  * Interface for mobjects that support glyph-stroke animation (e.g. Text).
@@ -35,7 +36,9 @@ interface RevealProgressMobject {
  */
 interface TextAccessMobject {
   getText(): string;
+  getTextContent?(): string;
   setText(text: string): void;
+  setVisibleRange?(start: number, end: number): void;
 }
 
 /**
@@ -502,6 +505,8 @@ export interface WriteOptions extends AnimationOptions {
  * 3. Opacity fallback.
  */
 export class Write extends Animation {
+  private _vectorWrite: Create | null = null;
+  private _vectorWidths: Array<[VMobject, number]> = [];
   protected readonly lagRatio: number;
   private _reverse: boolean;
   private _remover: boolean;
@@ -539,6 +544,35 @@ export class Write extends Animation {
   override begin(): void {
     super.begin();
     this._originalOpacity = this.mobject.opacity;
+    this._useGlyphStroke = false;
+    this._useRevealProgress = false;
+    this._useDashReveal = false;
+    this._vectorWrite = null;
+    this._vectorWidths = [];
+
+    // Vector formulas reuse Create's stroke/fill lifecycle and per-glyph stagger.
+    if (
+      this.mobject instanceof VMobject &&
+      'getLatex' in this.mobject &&
+      hasLine2Children(this.mobject)
+    ) {
+      const visit = (object: Mobject) => {
+        if (object instanceof VMobject) {
+          this._vectorWidths.push([object, object.strokeWidth]);
+          object.strokeWidth = Math.max(1.5, object.strokeWidth);
+          object._markDirty();
+        }
+        object.children.forEach(visit);
+      };
+      visit(this.mobject);
+      this._vectorWrite = new Create(this.mobject, {
+        duration: this.duration,
+        lagRatio: this.lagRatio,
+      });
+      this._vectorWrite.begin();
+      this.interpolate(0);
+      return;
+    }
 
     // Priority 1: Check for glyph stroke mode
     if (
@@ -717,6 +751,19 @@ export class Write extends Animation {
   interpolate(alpha: number): void {
     const effectiveAlpha = this._reverse ? 1 - alpha : alpha;
 
+    if (this._vectorWrite) {
+      const progress =
+        effectiveAlpha <= this._strokeRatio
+          ? this._strokeRatio > 0
+            ? (0.5 * effectiveAlpha) / this._strokeRatio
+            : 0.5
+          : this._strokeRatio < 1
+            ? 0.5 + (0.5 * (effectiveAlpha - this._strokeRatio)) / (1 - this._strokeRatio)
+            : 1;
+      this._vectorWrite.interpolate(progress);
+      return;
+    }
+
     if (this._useGlyphStroke) {
       this._interpolateGlyphStroke(effectiveAlpha);
     } else if (this._useRevealProgress) {
@@ -855,6 +902,20 @@ export class Write extends Animation {
   }
 
   override finish(): void {
+    if (this._vectorWrite) {
+      if (this._remover) {
+        this._vectorWrite.interpolate(0);
+        this.mobject.setStrokeOpacity(0);
+      } else {
+        this._vectorWrite.finish();
+      }
+      for (const [object, width] of this._vectorWidths) {
+        object.strokeWidth = width;
+        object._markDirty();
+      }
+      super.finish();
+      return;
+    }
     if (this._useGlyphStroke) {
       this._finishGlyphStroke();
       super.finish();
@@ -1023,62 +1084,46 @@ export class AddTextLetterByLetter extends Animation {
 
   constructor(mobject: Mobject, options: AddTextLetterByLetterOptions = {}) {
     const timePerChar = options.timePerChar ?? 0.1;
-    // Duration depends on text length - will be set in begin()
-    // For now, use a default or the provided duration
-    super(mobject, { ...options, duration: options.duration ?? 1 });
+    const text = mobject as Mobject & Partial<TextAccessMobject>;
+    const length =
+      typeof text.getText === 'function'
+        ? textGraphemes(text.getTextContent?.() ?? text.getText()).length
+        : undefined;
+    super(mobject, {
+      ...options,
+      duration: options.duration ?? (length === undefined ? 1 : length * timePerChar),
+    });
     this.timePerChar = timePerChar;
     this.reverse = options.reverse ?? false;
   }
 
   override begin(): void {
     super.begin();
-    if (
-      'getText' in this.mobject &&
-      typeof (this.mobject as unknown as TextAccessMobject).getText === 'function'
-    ) {
-      this._fullText = (this.mobject as unknown as TextAccessMobject).getText();
-      if (
-        !this.reverse &&
-        'setText' in this.mobject &&
-        typeof (this.mobject as unknown as TextAccessMobject).setText === 'function'
-      ) {
-        (this.mobject as unknown as TextAccessMobject).setText('');
-      }
-    }
+    const text = this.mobject as Mobject & Partial<TextAccessMobject>;
+    if (typeof text.getText === 'function')
+      this._fullText = text.getTextContent?.() ?? text.getText();
+    this.interpolate(0);
   }
 
   interpolate(alpha: number): void {
-    if (
-      'setText' in this.mobject &&
-      typeof (this.mobject as unknown as TextAccessMobject).setText === 'function' &&
-      this._fullText
-    ) {
-      if (this.reverse) {
-        const numCharsToRemove = Math.floor(alpha * this._fullText.length);
-        const remainingChars = this._fullText.length - numCharsToRemove;
-        (this.mobject as unknown as TextAccessMobject).setText(
-          this._fullText.substring(0, remainingChars),
-        );
-      } else {
-        const numChars = Math.floor(alpha * this._fullText.length);
-        (this.mobject as unknown as TextAccessMobject).setText(
-          this._fullText.substring(0, numChars),
-        );
-      }
+    const text = this.mobject as Mobject & Partial<TextAccessMobject>;
+    const graphemes = textGraphemes(this._fullText);
+    const amount = Math.floor(Math.max(0, Math.min(1, alpha)) * graphemes.length);
+    const count = this.reverse ? graphemes.length - amount : amount;
+    if (typeof text.setVisibleRange === 'function') {
+      text.setVisibleRange(0, count);
+    } else if (typeof text.setText === 'function') {
+      text.setText(
+        graphemes
+          .slice(0, count)
+          .map((part) => part.text)
+          .join(''),
+      );
     }
   }
 
   override finish(): void {
-    if (
-      'setText' in this.mobject &&
-      typeof (this.mobject as unknown as TextAccessMobject).setText === 'function'
-    ) {
-      if (this.reverse) {
-        (this.mobject as unknown as TextAccessMobject).setText('');
-      } else if (this._fullText) {
-        (this.mobject as unknown as TextAccessMobject).setText(this._fullText);
-      }
-    }
+    this.interpolate(1);
     super.finish();
   }
 }

@@ -22,14 +22,26 @@
  * ```
  */
 
+import * as THREE from 'three';
+import { Mobject } from '../core/Mobject';
 import { Scene, SceneOptions } from '../core/Scene';
-import { MasterTimeline } from '../animation/MasterTimeline';
+import { MasterTimeline, type Slide } from '../animation/MasterTimeline';
 import { PlayerUI } from './PlayerUI';
 import { PlayerController } from './PlayerController';
 import { RecordingScene } from './RecordingScene';
 import { logger } from '../utils/logger';
+import { prepareMobjects } from '../core/readiness';
+import { captureScene, restoreScene } from './SceneCheckpoint';
+import { inspectSceneText, type ProjectedTextRun } from '../presentation/semantic';
 
 export interface PlayerOptions extends SceneOptions {
+  /** Build controls independently of keyboard and pointer handlers. */
+  ui?: boolean;
+  keyboard?: boolean;
+  pointer?: boolean;
+  /** A supplied scene is borrowed unless ownsScene is explicitly true. */
+  scene?: Scene | ((container: HTMLElement, options: SceneOptions) => Scene);
+  ownsScene?: boolean;
   /** Auto-hide controls after this many ms. 0 = never. Default 2500. */
   autoHideMs?: number;
   /** Auto-play after sequence() finishes recording. Default false. */
@@ -43,8 +55,14 @@ export interface PlayerOptions extends SceneOptions {
 export class Player {
   private _scene: Scene;
   private _masterTimeline: MasterTimeline;
-  private _ui: PlayerUI;
+  private _ui: PlayerUI | null;
   private _controller: PlayerController;
+  private _ownsScene: boolean;
+  private _disposed = false;
+  private _compiling = false;
+  private _recorder: RecordingScene | null = null;
+  private _intervalPlayback = false;
+  private _listeners = new Map<string, Set<(player: Player, error?: unknown) => void>>();
   private _isPlaying: boolean = false;
   private _playbackRate: number = 1;
   private _animFrameId: number | null = null;
@@ -75,46 +93,57 @@ export class Player {
     this._slidesMode = options.slidesMode ?? false;
 
     // Create the underlying scene
-    this._scene = new Scene(container, options);
+    this._ownsScene = options.ownsScene ?? !(options.scene instanceof Scene);
+    this._scene =
+      typeof options.scene === 'function'
+        ? options.scene(container, { ...options, autoRender: false })
+        : (options.scene ?? new Scene(container, { ...options, autoRender: false }));
 
     // Create master timeline
     this._masterTimeline = new MasterTimeline();
 
     // Create UI
-    this._ui = new PlayerUI(
+    this._ui =
+      options.ui === false
+        ? null
+        : new PlayerUI(
+            container,
+            {
+              onPlayPause: () => this.togglePlayPause(),
+              onSeek: (t) => this.seek(t),
+              onPrev: () => this.prevSegment(),
+              onNext: () => this.nextSegment(),
+              onSpeedChange: (r) => this.setPlaybackRate(r),
+              onFullscreen: () => this.toggleFullscreen(),
+              onExport: (format) => this.exportAs(format),
+              onSlidesToggle: (enabled) => this.setSlidesMode(enabled),
+            },
+            {
+              autoHideMs: options.autoHideMs,
+            },
+          );
+
+    // Sync initial slides mode state
+    this._ui?.setSlidesMode(this._slidesMode);
+
+    // Enable scroll-to-scrub
+    this._ui?.enableScrollScrub(() => this._masterTimeline.getCurrentTime());
+
+    // Create controller (keyboard/mouse)
+    this._controller = new PlayerController(
       container,
       {
         onPlayPause: () => this.togglePlayPause(),
-        onSeek: (t) => this.seek(t),
         onPrev: () => this.prevSegment(),
         onNext: () => this.nextSegment(),
-        onSpeedChange: (r) => this.setPlaybackRate(r),
+        onSeek: (t) => this.seek(t),
         onFullscreen: () => this.toggleFullscreen(),
-        onExport: (format) => this.exportAs(format),
-        onSlidesToggle: (enabled) => this.setSlidesMode(enabled),
+        onSlidesToggle: () => this.setSlidesMode(!this._slidesMode),
+        getCurrentTime: () => this._masterTimeline.getCurrentTime(),
+        getDuration: () => this._masterTimeline.getDuration(),
       },
-      {
-        autoHideMs: options.autoHideMs,
-      },
+      { keyboard: options.keyboard, pointer: options.pointer },
     );
-
-    // Sync initial slides mode state
-    this._ui.setSlidesMode(this._slidesMode);
-
-    // Enable scroll-to-scrub
-    this._ui.enableScrollScrub(() => this._masterTimeline.getCurrentTime());
-
-    // Create controller (keyboard/mouse)
-    this._controller = new PlayerController(container, {
-      onPlayPause: () => this.togglePlayPause(),
-      onPrev: () => this.prevSegment(),
-      onNext: () => this.nextSegment(),
-      onSeek: (t) => this.seek(t),
-      onFullscreen: () => this.toggleFullscreen(),
-      onSlidesToggle: () => this.setSlidesMode(!this._slidesMode),
-      getCurrentTime: () => this._masterTimeline.getCurrentTime(),
-      getDuration: () => this._masterTimeline.getDuration(),
-    });
 
     // Resize scene when entering/leaving fullscreen. Restore dimensions are
     // captured synchronously in `toggleFullscreen()` before `requestFullscreen`
@@ -140,6 +169,13 @@ export class Player {
    * that captures all play()/wait() calls to build the master timeline.
    */
   async sequence(builder: (scene: RecordingScene) => Promise<void>): Promise<void> {
+    if (this._disposed) throw new Error('Player is disposed.');
+    if (this._compiling) throw new Error('A sequence is already compiling.');
+    this.pause();
+    this._compiling = true;
+    this._recorder?.rollback();
+    this._recorder?.disposeDetached();
+    const previousTimeline = this._masterTimeline;
     // Reset
     this._masterTimeline = new MasterTimeline();
     this._activeLoopSlideIndex = null;
@@ -147,10 +183,18 @@ export class Player {
 
     // Record
     const recorder = new RecordingScene(this._scene, this._masterTimeline);
-    await builder(recorder);
-
-    // Build the slide list from recorded segments + slide boundaries.
-    this._masterTimeline.finalizeSlides();
+    try {
+      await builder(recorder);
+      await recorder.finish();
+      this._recorder = recorder;
+    } catch (error) {
+      recorder.rollback();
+      this._masterTimeline = previousTimeline;
+      this._emit('error', error);
+      throw error;
+    } finally {
+      this._compiling = false;
+    }
 
     // Set the master timeline on the scene
     this._scene.setTimeline(this._masterTimeline);
@@ -160,11 +204,149 @@ export class Player {
     this._scene.render();
 
     // Update UI with segment markers
-    this._ui.setSegments(this._masterTimeline);
-    this._ui.updateTime(0, this._masterTimeline.getDuration());
+    this._ui?.setSegments(this._masterTimeline);
+    this._ui?.updateTime(0, this._masterTimeline.getDuration());
 
+    this._emit('ready');
     if (this._autoPlay) {
       this.play();
+    }
+  }
+
+  /** Subscribe without requiring UI or input handlers. Returns an unsubscribe function. */
+  on(
+    event: 'ready' | 'frame' | 'play' | 'pause' | 'complete' | 'error',
+    callback: (player: Player, error?: unknown) => void,
+  ): () => void {
+    const listeners = this._listeners.get(event) ?? new Set();
+    listeners.add(callback);
+    this._listeners.set(event, listeners);
+    return () => listeners.delete(callback);
+  }
+
+  private _emit(event: string, error?: unknown): void {
+    this._listeners.get(event)?.forEach((listener) => listener(this, error));
+  }
+
+  async prepare(): Promise<void> {
+    await prepareMobjects(this._scene.mobjects);
+  }
+
+  inspectText(): ProjectedTextRun[] {
+    return inspectSceneText(this.scene);
+  }
+
+  async captureCheckpoint(id: string | number): Promise<{
+    image: string;
+    text: ProjectedTextRun[];
+    width: number;
+    height: number;
+    checkpoint: Slide;
+  }> {
+    return this.withFrozenState(async () => {
+      const checkpoint = this._checkpoint(id);
+      this.seekCheckpoint(id);
+      if (checkpoint.printTime !== undefined) this.seek(checkpoint.printTime);
+      await this.prepare();
+      const text = this.inspectText();
+      const prose = new Set(text.filter((run) => run.kind === 'text').map((run) => run.mobjectId));
+      const hidden = new Map<THREE.Object3D, boolean>();
+      const hide = (object: Mobject) => {
+        if (prose.has(object.id)) {
+          const mesh = object.getThreeObject();
+          hidden.set(mesh, mesh.visible);
+          mesh.visible = false;
+        } else object.children.forEach(hide);
+      };
+      try {
+        this.scene.mobjects.forEach(hide);
+        this.scene.render();
+        return {
+          image: this.scene.renderer.getCanvas().toDataURL('image/png'),
+          text,
+          width: this.scene.renderer.width,
+          height: this.scene.renderer.height,
+          checkpoint,
+        };
+      } finally {
+        hidden.forEach((visible, object) => {
+          object.visible = visible;
+        });
+      }
+    });
+  }
+
+  get checkpoints(): readonly Slide[] {
+    return this._masterTimeline.getSlides();
+  }
+
+  private _checkpoint(id: string | number): Slide {
+    const checkpoint =
+      typeof id === 'number'
+        ? this.checkpoints[id]
+        : this.checkpoints.find((item) => item.id === id);
+    if (!checkpoint) throw new Error(`Unknown checkpoint: ${id}`);
+    return checkpoint;
+  }
+
+  /** Immediately exit a loop/interval without changing the current frame. */
+  stop(): void {
+    this.pause();
+    this._activeLoopSlideIndex = null;
+    this._slidesTargetSlideIndex = -1;
+    this._intervalPlayback = false;
+  }
+
+  seekCheckpoint(id: string | number, position: 'start' | 'end' = 'end'): void {
+    this.stop();
+    const checkpoint = this._checkpoint(id);
+    this._masterTimeline.seekSegment(
+      position === 'start' ? checkpoint.startSegmentIndex : checkpoint.endSegmentIndex,
+      position,
+    );
+    this._scene.render();
+    this._emit('frame');
+  }
+
+  playCheckpoint(id: string | number): void {
+    this.seekCheckpoint(id, 'start');
+    const checkpoint = this._checkpoint(id);
+    if (checkpoint.startTime === checkpoint.endTime) {
+      this.seekCheckpoint(id);
+      this._emit('complete');
+      return;
+    }
+    this._intervalPlayback = true;
+    this._slidesTargetSlideIndex = checkpoint.index;
+    this.setPlaybackRate(checkpoint.playbackRate);
+    this.play();
+  }
+
+  /** Freeze live state across synchronous or asynchronous capture work, even on failure. */
+  async withFrozenState<T>(capture: () => T | Promise<T>): Promise<T> {
+    const state = captureScene(this.scene);
+    const time = this.timeline.getCurrentTime();
+    const playing = this.isPlaying;
+    const target = this._slidesTargetSlideIndex;
+    const loop = this._activeLoopSlideIndex;
+    const interval = this._intervalPlayback;
+    const rate = this._playbackRate;
+    const width = this.scene.renderer.width;
+    const height = this.scene.renderer.height;
+    this.pause();
+    try {
+      return await capture();
+    } finally {
+      this.timeline.seek(time);
+      this.scene.resize(width, height);
+      restoreScene(this.scene, state);
+      this._slidesTargetSlideIndex = target;
+      this._activeLoopSlideIndex = loop;
+      this._intervalPlayback = interval;
+      this._playbackRate = rate;
+      this.scene.render();
+      if (playing) this.play();
+      this._emit('frame');
     }
   }
 
@@ -190,7 +372,7 @@ export class Player {
     }
     this._isPlaying = true;
     this._masterTimeline.play();
-    this._ui.setPlaying(true);
+    this._ui?.setPlaying(true);
     if (this._slidesMode && this._slidesTargetSlideIndex < 0) {
       const current = this._masterTimeline.getCurrentSlide();
       if (current) {
@@ -198,14 +380,16 @@ export class Player {
       }
     }
     this._startLoop();
+    this._emit('play');
   }
 
   /** Pause playback. */
   pause(): void {
     this._isPlaying = false;
     this._masterTimeline.pause();
-    this._ui.setPlaying(false);
+    this._ui?.setPlaying(false);
     this._stopLoop();
+    this._emit('pause');
   }
 
   /** Toggle between play and pause. */
@@ -240,7 +424,7 @@ export class Player {
     }
     this._masterTimeline.seek(time);
     this._scene.render();
-    this._ui.updateTime(this._masterTimeline.getCurrentTime(), this._masterTimeline.getDuration());
+    this._ui?.updateTime(this._masterTimeline.getCurrentTime(), this._masterTimeline.getDuration());
   }
 
   /**
@@ -261,7 +445,7 @@ export class Player {
     const seg = this._masterTimeline.nextSegment();
     if (seg) {
       this._scene.render();
-      this._ui.updateTime(
+      this._ui?.updateTime(
         this._masterTimeline.getCurrentTime(),
         this._masterTimeline.getDuration(),
       );
@@ -288,7 +472,7 @@ export class Player {
     const prev = this._masterTimeline.prevSegment();
     if (prev) {
       this._scene.render();
-      this._ui.updateTime(
+      this._ui?.updateTime(
         this._masterTimeline.getCurrentTime(),
         this._masterTimeline.getDuration(),
       );
@@ -314,10 +498,10 @@ export class Player {
         this._slidesTargetSlideIndex = -1;
         this._isPlaying = false;
         this._masterTimeline.pause();
-        this._ui.setPlaying(false);
+        this._ui?.setPlaying(false);
         this._stopLoop();
         this._scene.render();
-        this._ui.updateTime(
+        this._ui?.updateTime(
           this._masterTimeline.getCurrentTime(),
           this._masterTimeline.getDuration(),
         );
@@ -353,7 +537,7 @@ export class Player {
       if (!targetSlide) return;
       this._masterTimeline.seek(targetSlide.startTime);
       this._scene.render();
-      this._ui.updateTime(
+      this._ui?.updateTime(
         this._masterTimeline.getCurrentTime(),
         this._masterTimeline.getDuration(),
       );
@@ -367,7 +551,7 @@ export class Player {
     const target = elapsed > 0.5 ? current : (slides[current.index - 1] ?? current);
     this._masterTimeline.seek(target.startTime);
     this._scene.render();
-    this._ui.updateTime(this._masterTimeline.getCurrentTime(), this._masterTimeline.getDuration());
+    this._ui?.updateTime(this._masterTimeline.getCurrentTime(), this._masterTimeline.getDuration());
   }
 
   /** Set the playback speed multiplier. */
@@ -378,7 +562,7 @@ export class Player {
   /** Enable or disable slides (presentation) mode at runtime. */
   setSlidesMode(enabled: boolean): void {
     this._slidesMode = enabled;
-    this._ui.setSlidesMode(enabled);
+    this._ui?.setSlidesMode(enabled);
     if (!enabled) {
       this._activeLoopSlideIndex = null;
       this._slidesTargetSlideIndex = -1;
@@ -392,20 +576,20 @@ export class Player {
     if (wasPlaying) this.pause();
 
     const filename = `animation.${format}`;
-    this._ui.setExportProgress(0);
+    this._ui?.setExportProgress(0);
 
     try {
       await this._scene.export(filename, {
         duration: this._masterTimeline.getDuration(),
         width: this._scene.getWidth(),
         height: this._scene.getHeight(),
-        onProgress: (p) => this._ui.setExportProgress(p),
+        onProgress: (p) => this._ui?.setExportProgress(p),
       });
     } catch (err) {
       logger.error('Export failed:', err);
-      this._ui.showError(`Export failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+      this._ui?.showError(`Export failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
     } finally {
-      this._ui.setExportProgress(null);
+      this._ui?.setExportProgress(null);
       // Restore playback position (export seeks through the entire timeline)
       this.seek(savedTime);
       if (wasPlaying) this.play();
@@ -434,11 +618,15 @@ export class Player {
 
   /** Clean up all resources. */
   dispose(): void {
+    if (this._disposed) return;
+    this._disposed = true;
     this._stopLoop();
     document.removeEventListener('fullscreenchange', this._onFullscreenChange);
-    this._ui.dispose();
+    this._ui?.dispose();
     this._controller.dispose();
-    this._scene.dispose();
+    this._recorder?.disposeDetached();
+    if (this._ownsScene) this._scene.dispose();
+    this._listeners.clear();
   }
 
   // ---------------------------------------------------------------------------
@@ -467,22 +655,24 @@ export class Player {
       this._masterTimeline.update(dt);
 
       // Update mobject updaters
-      for (const mob of this._scene.mobjects) {
-        mob.update(dt);
+      if (!this._masterTimeline.isCompiled) {
+        for (const mob of this._scene.mobjects) mob.update(dt);
       }
 
       // Render
       this._scene.render();
 
+      this._emit('frame');
+
       // Update UI
-      this._ui.updateTime(
+      this._ui?.updateTime(
         this._masterTimeline.getCurrentTime(),
         this._masterTimeline.getDuration(),
       );
 
       // In slides mode, branch on the active slide's flags at its endTime.
       // loop wins over autoNext (a looping slide never reaches its end naturally).
-      if (this._slidesMode && this._slidesTargetSlideIndex >= 0) {
+      if ((this._slidesMode || this._intervalPlayback) && this._slidesTargetSlideIndex >= 0) {
         const slides = this._masterTimeline.getSlides();
         const targetSlide = slides[this._slidesTargetSlideIndex];
         if (!targetSlide) {
@@ -499,21 +689,21 @@ export class Player {
             this._masterTimeline.play();
             this._activeLoopSlideIndex = targetSlide.index;
             this._scene.render();
-            this._ui.updateTime(
+            this._ui?.updateTime(
               this._masterTimeline.getCurrentTime(),
               this._masterTimeline.getDuration(),
             );
             return;
           }
           const nextIdx = targetSlide.index + 1;
-          if (targetSlide.autoNext && nextIdx < slides.length) {
+          if (!this._intervalPlayback && targetSlide.autoNext && nextIdx < slides.length) {
             // Advance to the next slide and keep playing through it.
             const nextSlide = slides[nextIdx];
             this._masterTimeline.seek(nextSlide.startTime);
             this._masterTimeline.play();
             this._slidesTargetSlideIndex = nextIdx;
             this._scene.render();
-            this._ui.updateTime(
+            this._ui?.updateTime(
               this._masterTimeline.getCurrentTime(),
               this._masterTimeline.getDuration(),
             );
@@ -523,15 +713,16 @@ export class Player {
           // also falls through here — there is nothing to advance to.)
           this._masterTimeline.seek(targetSlide.endTime);
           this._scene.render();
-          this._ui.updateTime(
+          this._ui?.updateTime(
             this._masterTimeline.getCurrentTime(),
             this._masterTimeline.getDuration(),
           );
           this._slidesTargetSlideIndex = -1;
           this._isPlaying = false;
           this._masterTimeline.pause();
-          this._ui.setPlaying(false);
+          this._ui?.setPlaying(false);
           this._stopLoop();
+          this._emit('complete');
           return;
         }
       }
@@ -544,8 +735,9 @@ export class Player {
         } else {
           this._isPlaying = false;
           this._masterTimeline.pause();
-          this._ui.setPlaying(false, true); // show replay icon
+          this._ui?.setPlaying(false, true); // show replay icon
           this._stopLoop();
+          this._emit('complete');
         }
       }
     };

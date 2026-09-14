@@ -987,7 +987,14 @@ export {
 } from './utils/vectors';
 
 // Player
-export { Player, type PlayerOptions } from './player';
+export { Player, RecordingScene, type PlayerOptions } from './player';
+export type { SemanticTextRun } from './mobjects/text/TextSemantics';
+export { prepareMobjects } from './core/readiness';
+export {
+  inspectSceneText,
+  appendSemanticText,
+  type ProjectedTextRun,
+} from './presentation/semantic';
 export { PlayerUI, type PlayerUIOptions, type PlayerUICallbacks } from './player';
 export { PlayerController, type PlayerControllerCallbacks } from './player';
 

@@ -1,4 +1,10 @@
 import { Text, TextOptions } from './Text';
+import {
+  canvasSemanticRuns,
+  textGraphemes,
+  type CanvasTextRun,
+  type SemanticTextRun,
+} from './TextSemantics';
 
 /**
  * Options for creating a MarkupText mobject
@@ -628,6 +634,7 @@ function containsMarkupTags(text: string): boolean {
  * for backward compatibility when no XML tags are detected.
  */
 export class MarkupText extends Text {
+  private _semanticLayout: CanvasTextRun[] = [];
   /** Parsed styled text segments */
   protected _styledSegments: StyledTextSegment[] = [];
 
@@ -649,11 +656,37 @@ export class MarkupText extends Text {
    */
   override setText(text: string): this {
     this._text = text;
+    this._visibleRange = null;
+    this._invalidateGlyphs();
     this._parseMarkup();
     this._renderToCanvas();
     this._updateMesh();
     this._markDirty();
     return this;
+  }
+
+  override getTextContent(): string {
+    return this._styledSegments?.map((segment) => segment.text).join('') ?? '';
+  }
+
+  override getSemanticTextRuns(): SemanticTextRun[] {
+    this.getThreeObject();
+    return canvasSemanticRuns(
+      this,
+      this.getTextContent(),
+      this._semanticLayout,
+      this._canvas,
+      this._worldWidth,
+      this._worldHeight,
+    );
+  }
+
+  override restoreCapturedState(state: Record<string, unknown>): void {
+    if (typeof state.text === 'string' && state.text !== this._text) {
+      this._text = state.text;
+      this._parseMarkup();
+    }
+    super.restoreCapturedState(state);
   }
 
   /**
@@ -979,6 +1012,8 @@ export class MarkupText extends Text {
     const padding = scaledBaseFontSize * 0.2;
 
     let currentY = padding;
+    let sourceOffset = 0;
+    this._semanticLayout = [];
 
     for (const segments of lineSegments) {
       const lineMaxFs = this._maxFontSizeInLine(segments) * RESOLUTION_SCALE;
@@ -1018,14 +1053,38 @@ export class MarkupText extends Text {
         const segWidth =
           this._ctx.measureText(seg.text).width +
           (seg.text.length - 1) * this._letterSpacing * RESOLUTION_SCALE;
+        const fragment = this._visibleFragment(seg.text, sourceOffset);
+        const drawText = fragment.text;
+        const drawX = currentX + this._ctx.measureText(fragment.prefix).width;
+        const drawWidth =
+          this._ctx.measureText(drawText).width +
+          Math.max(0, textGraphemes(drawText).length - 1) * this._letterSpacing * RESOLUTION_SCALE;
+        this._semanticLayout.push({
+          text: drawText,
+          sourceOffset: sourceOffset + fragment.prefix.length,
+          x: drawX,
+          y: currentY + shiftPx,
+          width: drawWidth,
+          height: lineHeight,
+          font: {
+            family: seg.fontFamily ?? this._fontFamily,
+            size: this._resolveSegmentFontSize(seg),
+            weight: seg.fontWeight ?? this._fontWeight,
+            style: seg.fontStyle ?? this._fontStyle,
+            lineHeight: this._lineHeight,
+            letterSpacing: this._letterSpacing,
+          },
+          color: seg.color ?? this.color,
+        });
+        sourceOffset += seg.text.length;
 
         // Draw background if present
         if (seg.backgroundColor) {
           this._ctx.save();
           this._ctx.fillStyle = seg.backgroundColor;
-          this._ctx.globalAlpha = this.fillOpacity * this._opacity;
+          this._ctx.globalAlpha = this.fillOpacity;
           // Background rect from top of line to bottom
-          this._ctx.fillRect(currentX, currentY, segWidth, lineHeight);
+          this._ctx.fillRect(drawX, currentY, drawWidth, lineHeight);
           this._ctx.restore();
         }
 
@@ -1036,13 +1095,13 @@ export class MarkupText extends Text {
         if (this.strokeWidth > 0) {
           this._ctx.strokeStyle = fillColor;
           this._ctx.lineWidth = this.strokeWidth * RESOLUTION_SCALE;
-          this._ctx.strokeText(seg.text, currentX, segY);
+          this._ctx.strokeText(drawText, drawX, segY);
         }
 
         // Draw fill
         this._ctx.fillStyle = fillColor;
-        this._ctx.globalAlpha = this.fillOpacity * this._opacity;
-        this._ctx.fillText(seg.text, currentX, segY);
+        this._ctx.globalAlpha = this.fillOpacity;
+        this._ctx.fillText(drawText, drawX, segY);
 
         // Draw underline
         if (seg.underline) {
@@ -1051,10 +1110,10 @@ export class MarkupText extends Text {
           this._ctx.save();
           this._ctx.strokeStyle = fillColor;
           this._ctx.lineWidth = lineW;
-          this._ctx.globalAlpha = this.fillOpacity * this._opacity;
+          this._ctx.globalAlpha = this.fillOpacity;
           this._ctx.beginPath();
-          this._ctx.moveTo(currentX, underlineY);
-          this._ctx.lineTo(currentX + segWidth, underlineY);
+          this._ctx.moveTo(drawX, underlineY);
+          this._ctx.lineTo(drawX + drawWidth, underlineY);
           this._ctx.stroke();
           this._ctx.restore();
         }
@@ -1066,10 +1125,10 @@ export class MarkupText extends Text {
           this._ctx.save();
           this._ctx.strokeStyle = fillColor;
           this._ctx.lineWidth = lineW;
-          this._ctx.globalAlpha = this.fillOpacity * this._opacity;
+          this._ctx.globalAlpha = this.fillOpacity;
           this._ctx.beginPath();
-          this._ctx.moveTo(currentX, strikeY);
-          this._ctx.lineTo(currentX + segWidth, strikeY);
+          this._ctx.moveTo(drawX, strikeY);
+          this._ctx.lineTo(drawX + drawWidth, strikeY);
           this._ctx.stroke();
           this._ctx.restore();
         }
@@ -1078,14 +1137,17 @@ export class MarkupText extends Text {
       }
 
       currentY += lineHeight;
+      sourceOffset++;
     }
 
     // Store world dimensions
     this._worldWidth = (width / RESOLUTION_SCALE) * PIXEL_TO_WORLD;
     this._worldHeight = (height / RESOLUTION_SCALE) * PIXEL_TO_WORLD;
+    this._canvasDirty = false;
 
     // Update texture
     if (this._texture) {
+      this._texture.image = this._canvas;
       this._texture.needsUpdate = true;
     }
   }
@@ -1110,6 +1172,7 @@ export class MarkupText extends Text {
     });
     copy._codeFontFamily = this._codeFontFamily;
     this._copyBaseAttributesInto(copy, { copyChildren: false });
+    if (this._visibleRange) copy.setVisibleRange(...this._visibleRange);
     this._carryVisualSizeTo(copy);
     return copy;
   }
