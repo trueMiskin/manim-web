@@ -14,6 +14,7 @@ export default defineConfig({
     lib: {
       entry: {
         index: resolve(__dirname, 'src/index.ts'),
+        'reveal/index': resolve(__dirname, 'src/reveal/index.ts'),
         'integrations/react': resolve(__dirname, 'src/integrations/react.tsx'),
         'integrations/vue': resolve(__dirname, 'src/integrations/vue.ts'),
       },
@@ -40,8 +41,10 @@ export default defineConfig({
     },
   },
   resolve: {
-    alias: {
-      '@': resolve(__dirname, 'src'),
-    },
+    alias: [
+      { find: /^manim-web\/reveal$/, replacement: resolve(__dirname, 'src/reveal/index.ts') },
+      { find: /^manim-web$/, replacement: resolve(__dirname, 'src/index.ts') },
+      { find: '@', replacement: resolve(__dirname, 'src') },
+    ],
   },
 });

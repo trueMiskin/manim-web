@@ -157,6 +157,10 @@ export class ShapeMorphStrategy implements MorphStrategy {
     if (!this._targetTextureMobject)
       throw new Error('ShapeMorphStrategy requires target TexturedMobject');
 
+    // Both participants leave unit-geometry morph mode. ReplacementTransform
+    // keeps the target, and its later readiness pass must not multiply a rebuilt
+    // full-size plane by the residual per-frame mesh scale a second time.
+    this._targetTextureMobject.applyVisualSize(this._targetWidth, this._targetHeight);
     this._sourceTextureMobject.applyVisualSize(this._targetWidth, this._targetHeight);
     this._sourceTextureMobject.applyTextureFrom(this._targetTextureMobject);
     this._sourceTextureMobject.applyContentFrom(this._targetTextureMobject);

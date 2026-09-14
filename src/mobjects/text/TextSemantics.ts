@@ -43,6 +43,8 @@ export interface SemanticTextRun {
   readingOrder: number;
   font: {
     family: string;
+    /** Asset for this exact family; allows prebuilt handouts to register fonts. */
+    url?: string;
     size: number;
     weight: string | number;
     style: string;

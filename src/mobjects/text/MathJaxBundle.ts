@@ -36,5 +36,21 @@ import { RegisterHTMLHandler } from '@mathjax/src/js/handlers/html.js';
 import '@mathjax/src/js/input/tex/ams/AmsConfiguration.js';
 import '@mathjax/src/js/input/tex/newcommand/NewcommandConfiguration.js';
 import '@mathjax/src/js/input/tex/configmacros/ConfigMacrosConfiguration.js';
+import { MathJaxNewcmFont } from '@mathjax/mathjax-newcm-font/js/svg.js';
+// MathJax 4 moves \mathcal and \mathbb glyphs into optional font files. Register
+// these alphabets in the same lazy bundle so scientific formulas work offline
+// without a global asyncLoad hook or a second copy of MathJax's font registry.
+import '@mathjax/mathjax-newcm-font/js/svg/dynamic/calligraphic.js';
+import '@mathjax/mathjax-newcm-font/js/svg/dynamic/double-struck.js';
+
+/** Apply bundled optional alphabets directly to each output font instance. */
+export class BundledNewcmFont extends MathJaxNewcmFont {
+  constructor(options: Record<string, unknown> = {}) {
+    super(options);
+    for (const alphabet of ['calligraphic', 'double-struck']) {
+      BundledNewcmFont.dynamicFiles[alphabet].setup(this);
+    }
+  }
+}
 
 export { mathjax, TeX, SVG, liteAdaptor, RegisterHTMLHandler };
