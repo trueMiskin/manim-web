@@ -69,6 +69,11 @@ export class AnimationGroup extends Animation {
   /** Child animations */
   readonly animations: Animation[];
 
+  override dispose(): void {
+    for (const animation of this.animations) animation.dispose();
+    super.dispose();
+  }
+
   /** Lag ratio */
   readonly lagRatio: number;
 

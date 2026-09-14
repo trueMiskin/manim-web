@@ -78,6 +78,8 @@ export abstract class VMobjectRendering extends Mobject {
 
   /** Tracks whether opacity was fully opaque last sync (for corner-wrap rebuild) */
   private _wasOpaque: boolean = true;
+  private _hadFill = false;
+  private _lastStrokeWidth = 0;
 
   /** Cached Line2 for in-place geometry updates (avoids dispose/recreate) */
   private _cachedLine2: Line2 | null = null;
@@ -644,9 +646,16 @@ export abstract class VMobjectRendering extends Mobject {
     }
 
     const isOpaque = this._opacity >= 1;
-    if (isOpaque !== this._wasOpaque) {
+    const hasFill = this.fillOpacity > 0;
+    if (
+      isOpaque !== this._wasOpaque ||
+      hasFill !== this._hadFill ||
+      this.strokeWidth !== this._lastStrokeWidth
+    ) {
       this._geometryDirty = true;
       this._wasOpaque = isOpaque;
+      this._hadFill = hasFill;
+      this._lastStrokeWidth = this.strokeWidth;
     }
 
     if (this._geometryDirty && this._threeObject instanceof THREE.Group) {

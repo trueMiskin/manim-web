@@ -127,6 +127,7 @@ export class Scene {
   // When true, scheduled renders are suppressed and no microtask is queued.
   // Set by `play()`/`wait()` during their setup phase.
   private _suppressAutoRender: boolean = false;
+  private _deferredRenderDepth = 0;
 
   // Z-ordering: assign increasing renderOrder to each added mobject
   private _renderOrderCounter: number = 0;
@@ -1248,8 +1249,29 @@ export class Scene {
       callback();
     } finally {
       this._autoRender = wasAutoRender;
-      this._syncDirtyMobjects();
-      this._render();
+      if (this._deferredRenderDepth === 0) {
+        this._syncDirtyMobjects();
+        this._render();
+      }
+    }
+  }
+
+  /**
+   * Restore a compiled frame before its owning player performs the final render.
+   * @internal
+   */
+  _withDeferredRender<T>(callback: () => T): T {
+    const wasAutoRender = this._autoRender;
+    const wasSuppressed = this._suppressAutoRender;
+    this._autoRender = false;
+    this._suppressAutoRender = true;
+    this._deferredRenderDepth++;
+    try {
+      return callback();
+    } finally {
+      this._deferredRenderDepth--;
+      this._autoRender = wasAutoRender;
+      this._suppressAutoRender = wasSuppressed;
     }
   }
 

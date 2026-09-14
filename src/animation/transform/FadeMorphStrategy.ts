@@ -1,6 +1,7 @@
 import { Mobject } from '../../core/Mobject';
 import { Animation } from '../Animation';
 import { MorphStrategy } from './MorphStrategy';
+import type { Object3D } from 'three';
 
 interface FadeStateSnapshot {
   positionX: number;
@@ -18,6 +19,7 @@ export class FadeMorphStrategy implements MorphStrategy {
   private _targetPositionX = 0;
   private _targetPositionY = 0;
   private _targetPositionZ = 0;
+  private _attachedTarget: Object3D | null = null;
 
   private _snapshotState(mobject: Mobject): FadeStateSnapshot {
     return {
@@ -39,7 +41,10 @@ export class FadeMorphStrategy implements MorphStrategy {
     this._targetPositionZ = this._targetSnapshot.positionZ;
     const sourceObj = source.getThreeObject();
     const targetObj = target.getThreeObject();
-    if (sourceObj.parent && !targetObj.parent) sourceObj.parent.add(targetObj);
+    if (sourceObj.parent && !targetObj.parent) {
+      sourceObj.parent.add(targetObj);
+      this._attachedTarget = targetObj;
+    }
     target.setStrokeOpacity(0);
     target._syncToThree();
   }
@@ -75,5 +80,12 @@ export class FadeMorphStrategy implements MorphStrategy {
     target.opacity = this._targetSnapshot.opacity;
     target._syncToThree();
     source._markDirty();
+    // A completed fallback morph uses the target as its final visual.
+    this._attachedTarget = null;
+  }
+
+  reset(): void {
+    this._attachedTarget?.removeFromParent();
+    this._attachedTarget = null;
   }
 }

@@ -3,6 +3,15 @@ import { VMobject } from '../../core/VMobject';
 import { Vector3Tuple } from '../../core/Mobject';
 import { WHITE, DEFAULT_STROKE_WIDTH } from '../../constants';
 import { segmentLength, segmentDirection, segmentAngle } from './segment';
+import { lengthVec } from '../../utils/vectors';
+
+function restoredEndpoint(value: unknown, fallback: Vector3Tuple): Vector3Tuple {
+  return Array.isArray(value) &&
+    value.length === 3 &&
+    value.every((entry) => typeof entry === 'number')
+    ? [value[0], value[1], value[2]]
+    : fallback;
+}
 
 /**
  * Options for creating an Arrow
@@ -39,14 +48,23 @@ class ArrowShaft extends VMobject {
    * @pre startMargin >= 0 && endMargin >= 0
    * @pre startMargin + endMargin <= |delta|
    */
-  constructor(delta: number[], color: string, strokeWidth: number, startMargin = 0, endMargin = 0) {
+  constructor(
+    delta: Vector3Tuple,
+    color: string,
+    strokeWidth: number,
+    startMargin = 0,
+    endMargin = 0,
+  ) {
     super();
     this.color = color;
     this.strokeWidth = strokeWidth;
     this.fillOpacity = 0;
+    this.updateGeometry(delta, startMargin, endMargin);
+  }
 
+  updateGeometry(delta: Vector3Tuple, startMargin = 0, endMargin = 0): void {
     const [dx, dy, dz] = delta;
-    const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    const len = lengthVec(delta);
 
     if (len === 0) {
       this.setPoints3D([
@@ -95,14 +113,17 @@ class ArrowShaft extends VMobject {
  * ArrowTip - The triangular tip of an arrow (internal use)
  */
 class ArrowTip extends VMobject {
-  constructor(delta: number[], tipLength: number, tipWidth: number, color: string) {
+  constructor(delta: Vector3Tuple, tipLength: number, tipWidth: number, color: string) {
     super();
     this.color = color;
     this.fillOpacity = 1;
     this.strokeWidth = 0;
+    this.updateGeometry(delta, tipLength, tipWidth);
+  }
 
+  updateGeometry(delta: Vector3Tuple, tipLength: number, tipWidth: number): void {
     const [dx, dy, dz] = delta;
-    const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    const len = lengthVec(delta);
     if (len === 0) {
       this.setPoints3D([
         [0, 0, 0],
@@ -268,6 +289,30 @@ export class Arrow extends VGroup {
     this.putStartAndEndOn(start, end);
   }
 
+  override captureState(): Record<string, unknown> {
+    return {
+      ...super.captureState(),
+      start: [...this._start],
+      end: [...this._end],
+      tipLength: this._tipLength,
+      tipWidth: this._tipWidth,
+      arrowStrokeWidth: this._strokeWidth,
+    };
+  }
+
+  override restoreCapturedState(state: Record<string, unknown>): void {
+    super.restoreCapturedState(state);
+    this._start = restoredEndpoint(state.start, this._start);
+    this._end = restoredEndpoint(state.end, this._end);
+    if (typeof state.tipLength === 'number') this._tipLength = state.tipLength;
+    if (typeof state.tipWidth === 'number') this._tipWidth = state.tipWidth;
+    if (typeof state.arrowStrokeWidth === 'number') this._strokeWidth = state.arrowStrokeWidth;
+    // Checkpoints restore child identities before subclass data. Rebind cached
+    // parts without regenerating geometry or replacing those restored children.
+    this._shaft = this.children[0] instanceof ArrowShaft ? this.children[0] : null;
+    this._tip = this.children[1] instanceof ArrowTip ? this.children[1] : null;
+  }
+
   /**
    * Convert full arrow delta to shaft delta by removing tip length along direction.
    *
@@ -288,28 +333,13 @@ export class Arrow extends VGroup {
    * Regenerate canonical children from endpoint delta.
    *
    * Conventions:
-   * - Always rebuilds children (no in-place geometry mutation).
+   * - Reuses canonical shaft/tip identities and their renderer resources.
    * - Zero-length still yields canonical shaft+tip children.
    * - Tip local geometry is centered via centerPointsAroundPosition(), so
    *   `tip.getCenter() === tip.position` for the child object itself.
    */
   private _generateParts(delta: Vector3Tuple): void {
-    this.remove(...this.children);
-
-    const [dx, dy, dz] = delta;
-    const length = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-    if (length === 0) {
-      // Important invariant: putStartAndEndOn() must always leave Arrow with
-      // canonical children (shaft + tip), even for degenerate/zero-length input.
-      // Graphing vectors rely on this path and call endpoint helpers on zero vectors.
-      this._shaft = new ArrowShaft([0, 0, 0], this._color, this._strokeWidth);
-      this._tip = new ArrowTip([0, 0, 0], this._tipLength, this._tipWidth, this._color);
-      this._tip.centerPointsAroundPosition();
-      this.add(this._shaft);
-      this.add(this._tip);
-      return;
-    }
+    const length = lengthVec(delta);
 
     // Build the shaft from the FULL delta but trim only the tip end, so its
     // geometry spans [start, end - tipLength*dir]. Placed with its carrier at
@@ -317,12 +347,31 @@ export class Arrow extends VGroup {
     // on getStart() — a symmetric shaftDelta-long line would instead sit
     // tipLength/2 forward, gapping at the start and poking into the tip.
     const endMargin = Math.min(this._tipLength, length);
-    this._shaft = new ArrowShaft(delta, this._color, this._strokeWidth, 0, endMargin);
-    this._tip = new ArrowTip(delta, this._tipLength, this._tipWidth, this._color);
+    const [shaft, tip] = this.children;
+    if (this.children.length === 2 && shaft instanceof ArrowShaft && tip instanceof ArrowTip) {
+      this._shaft = shaft;
+      this._tip = tip;
+      for (const part of [shaft, tip]) {
+        part.position.set(0, 0, 0);
+        part.rotation.set(0, 0, 0);
+        part.scaleVector.set(1, 1, 1);
+        part.opacity = 1;
+        part.color = this._color;
+      }
+      shaft.strokeWidth = this._strokeWidth;
+      shaft.fillOpacity = 0;
+      shaft.updateGeometry(delta, 0, endMargin);
+      tip.strokeWidth = 0;
+      tip.fillOpacity = 1;
+      tip.updateGeometry(delta, this._tipLength, this._tipWidth);
+    } else {
+      this.remove(...this.children);
+      this._shaft = new ArrowShaft(delta, this._color, this._strokeWidth, 0, endMargin);
+      this._tip = new ArrowTip(delta, this._tipLength, this._tipWidth, this._color);
+      this.add(this._shaft);
+      this.add(this._tip);
+    }
     this._tip.centerPointsAroundPosition();
-
-    this.add(this._shaft);
-    this.add(this._tip);
   }
 
   /**
@@ -631,6 +680,26 @@ export class DoubleArrow extends VGroup {
     this._strokeWidth = strokeWidth;
 
     this.putStartAndEndOn(start, end);
+  }
+
+  override captureState(): Record<string, unknown> {
+    return {
+      ...super.captureState(),
+      start: [...this._start],
+      end: [...this._end],
+      tipLength: this._tipLength,
+      tipWidth: this._tipWidth,
+      arrowStrokeWidth: this._strokeWidth,
+    };
+  }
+
+  override restoreCapturedState(state: Record<string, unknown>): void {
+    super.restoreCapturedState(state);
+    this._start = restoredEndpoint(state.start, this._start);
+    this._end = restoredEndpoint(state.end, this._end);
+    if (typeof state.tipLength === 'number') this._tipLength = state.tipLength;
+    if (typeof state.tipWidth === 'number') this._tipWidth = state.tipWidth;
+    if (typeof state.arrowStrokeWidth === 'number') this._strokeWidth = state.arrowStrokeWidth;
   }
 
   private _generateParts(delta: Vector3Tuple): void {

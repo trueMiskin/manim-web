@@ -569,7 +569,7 @@ export class Write extends Animation {
         duration: this.duration,
         lagRatio: this.lagRatio,
       });
-      this._vectorWrite.begin();
+      Animation.withExternalState([this._vectorWrite], () => this._vectorWrite!.begin());
       this.interpolate(0);
       return;
     }
@@ -972,8 +972,21 @@ export class Write extends Animation {
       object._markDirty();
     }
     this._vectorWidths = [];
+    this._vectorWrite?.dispose();
     this._vectorWrite = null;
     super.reset();
+  }
+
+  override dispose(): void {
+    if (this._glyphGroup) this._finishGlyphStroke();
+    this._vectorWrite?.dispose();
+    this._vectorWrite = null;
+    for (const [object, width] of this._vectorWidths) {
+      object.strokeWidth = width;
+      object._markDirty();
+    }
+    this._vectorWidths = [];
+    super.dispose();
   }
 
   /**

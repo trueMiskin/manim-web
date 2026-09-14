@@ -16,6 +16,7 @@ import {
   registerAnimateProxy,
 } from './Mobject';
 import { VGroup } from './VGroup';
+import { serializeMobject, deserializeMobject, type MobjectState } from './StateManager';
 import { Animation, type AnimationOptions } from '../animation/Animation';
 import { type RateFunction, smooth } from '../rate-functions';
 import { Transform } from '../animation/transform/Transform';
@@ -28,7 +29,8 @@ export class AnimateProxy extends Animation {
   private _calls: RecordedCall[] = [];
   private _innerTransform: Transform | null = null;
   private _overrideAnimation: Animation | null = null;
-  private _originalState: Mobject | null = null;
+  private _originalState: MobjectState | null = null;
+  private _ownedTarget: Mobject | null = null;
 
   constructor(mobject: Mobject, options: AnimationOptions = {}) {
     super(mobject, {
@@ -150,6 +152,7 @@ export class AnimateProxy extends Animation {
   // ── Animation lifecycle ──────────────────────────────────────────
 
   override begin(): void {
+    this._releaseOwnedTarget();
     super.begin();
 
     // Check for animation override (only if there's exactly one call)
@@ -172,10 +175,11 @@ export class AnimateProxy extends Animation {
     }
 
     // Snapshot source so finish() can replay calls on it (see finish()).
-    this._originalState = this._source.copy();
+    this._originalState = serializeMobject(this._source);
 
     // Standard path: copy mobject, apply all recorded calls, use as Transform target
     const target = this._source.copy();
+    this._ownedTarget = target;
     for (const [methodName, args] of this._calls) {
       const method = (target as unknown as Record<string, (...a: unknown[]) => unknown>)[
         methodName
@@ -192,7 +196,7 @@ export class AnimateProxy extends Animation {
       duration: this.duration,
       rateFunc: this.rateFunc,
     });
-    this._innerTransform.begin();
+    Animation.withExternalState([this._innerTransform], () => this._innerTransform!.begin());
   }
 
   interpolate(alpha: number): void {
@@ -222,7 +226,7 @@ export class AnimateProxy extends Animation {
       // assumes no current VGroup subclass overrides shift/scale to mutate
       // parent-level numeric state; one that did would need its own re-sync.
       if (this._originalState && !(this._source instanceof VGroup)) {
-        this._source.become(this._originalState);
+        deserializeMobject(this._source, this._originalState);
         for (const [methodName, args] of this._calls) {
           const method = (this._source as unknown as Record<string, (...a: unknown[]) => unknown>)[
             methodName
@@ -237,6 +241,34 @@ export class AnimateProxy extends Animation {
       }
     }
     super.finish();
+    this._releaseOwnedTarget();
+  }
+
+  /** Release only copies created by this proxy, including interrupted cross-fades. */
+  private _releaseOwnedTarget(): void {
+    this._innerTransform?.dispose();
+    this._innerTransform = null;
+    this._overrideAnimation?.dispose();
+    this._overrideAnimation = null;
+    if (this._ownedTarget) {
+      this._ownedTarget._threeObject?.removeFromParent();
+      this._ownedTarget.dispose();
+      this._ownedTarget = null;
+    }
+  }
+
+  override reset(): void {
+    this._releaseOwnedTarget();
+    if (this._originalState) deserializeMobject(this._source, this._originalState);
+    super.reset();
+  }
+
+  override dispose(): void {
+    if (!this.isFinished() && this._originalState)
+      deserializeMobject(this._source, this._originalState);
+    this._releaseOwnedTarget();
+    this._originalState = null;
+    super.dispose();
   }
 }
 

@@ -41,10 +41,9 @@ export class ShapeMorphStrategy implements MorphStrategy {
   private _targetRotation = new THREE.Euler();
   private _startScale = new THREE.Vector3(1, 1, 1);
   private _targetScale = new THREE.Vector3(1, 1, 1);
-  private _sourceCopy: Mobject | null = null;
-  private _targetCopy: Mobject | null = null;
   private _sourceTextureMobject: TexturedMobject | null = null;
   private _targetTextureMobject: TexturedMobject | null = null;
+  private _attachedTarget: THREE.Object3D | null = null;
 
   /**
    * Validate textured inputs, force lazy Three object construction, then cache display meshes.
@@ -82,16 +81,14 @@ export class ShapeMorphStrategy implements MorphStrategy {
     const sourceMesh = this._shapeSourceMesh;
     const targetMesh = this._shapeTargetMesh;
 
-    this._sourceCopy = source.copy();
-    this._targetCopy = target.copy();
-    this._crossFadeStartOpacity = this._sourceCopy.opacity;
-    this._crossFadeTargetOpacity = this._targetCopy.opacity;
-    this._startPosition.copy(this._sourceCopy.position);
-    this._targetPosition.copy(this._targetCopy.position);
-    this._startRotation.copy(this._sourceCopy.rotation);
-    this._targetRotation.copy(this._targetCopy.rotation);
-    this._startScale.copy(this._sourceCopy.scaleVector);
-    this._targetScale.copy(this._targetCopy.scaleVector);
+    this._crossFadeStartOpacity = source.opacity;
+    this._crossFadeTargetOpacity = target.opacity;
+    this._startPosition.copy(source.position);
+    this._targetPosition.copy(target.position);
+    this._startRotation.copy(source.rotation);
+    this._targetRotation.copy(target.rotation);
+    this._startScale.copy(source.scaleVector);
+    this._targetScale.copy(target.scaleVector);
     const sourceDims = this._getVisualDims(sourceMesh, 'source mesh');
     const targetDims = this._getVisualDims(targetMesh, 'target mesh');
     this._startWidth = sourceDims.width;
@@ -119,7 +116,10 @@ export class ShapeMorphStrategy implements MorphStrategy {
     targetMesh.scale.set(this._startWidth, this._startHeight, 1);
     const sourceObj = source.getThreeObject();
     const targetObj = target.getThreeObject();
-    if (sourceObj.parent && !targetObj.parent) sourceObj.parent.add(targetObj);
+    if (sourceObj.parent && !targetObj.parent) {
+      sourceObj.parent.add(targetObj);
+      this._attachedTarget = targetObj;
+    }
     target.opacity = 0;
     target._syncToThree();
   }
@@ -166,8 +166,12 @@ export class ShapeMorphStrategy implements MorphStrategy {
     this._sourceTextureMobject.applyContentFrom(this._targetTextureMobject);
     source.opacity = this._crossFadeTargetOpacity;
     source.setStrokeOpacity(this._crossFadeTargetOpacity);
-    const targetObj = this._targetTextureMobject.getThreeObject();
-    if (targetObj.parent) targetObj.parent.remove(targetObj);
+    this.reset();
     source._markDirty();
+  }
+
+  reset(): void {
+    this._attachedTarget?.removeFromParent();
+    this._attachedTarget = null;
   }
 }

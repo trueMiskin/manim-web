@@ -6,6 +6,43 @@ import { ApplyMatrix } from '../../animation/transform/TransformExtensions';
 // ── Arrow defaults ──────────────────────────────────────────────────────────
 
 describe('Arrow defaults', () => {
+  // MIGRATION: endpoint updates preserve canonical child/resource identities
+  // while producing the same geometry as fresh arrows, including degenerate
+  // vectors, tip size changes, copied arrows, and changed style.
+  it('reuses shaft and tip geometry across endpoint changes', () => {
+    const arrow = new Arrow({ color: '#ff3300', strokeWidth: 3 });
+    const children = [...arrow.children];
+    const threeObjects = children.map((child) => child.getThreeObject());
+    const start: [number, number, number] = [1, -2, 0.5];
+    const ends: [number, number, number][] = [[-2, 1, -0.5], start];
+    for (const end of ends) {
+      arrow.putStartAndEndOn(start, end);
+      const fresh = new Arrow({ start, end, color: '#ff3300', strokeWidth: 3 });
+      expect(arrow.children).toEqual(children);
+      arrow.children.forEach((child, index) => {
+        expect(child.getThreeObject()).toBe(threeObjects[index]);
+        expect((child as VMobject).getPoints()).toEqual(
+          (fresh.children[index] as VMobject).getPoints(),
+        );
+        expect(child.style).toEqual(fresh.children[index].style);
+      });
+      fresh.dispose();
+    }
+    arrow.putStartAndEndOn(start, [-2, 1, -0.5]);
+    arrow.setTipLength(0).setTipWidth(0);
+    arrow.setTipLength(0.4).setTipWidth(0.2);
+    const copy = arrow.copy();
+    const copiedChildren = [...copy.children];
+    copy.setColor('#00ff88');
+    copy.putStartAndEndOn([0, 0, 0], [2, 0, 0]);
+    expect(copy.children).toEqual(copiedChildren);
+    expect(copy.children[0]).not.toBe(children[0]);
+    expect(copy.children[1].color).toBe('#00ff88');
+    expect(copy.getEnd()).toEqual([2, 0, 0]);
+    arrow.dispose();
+    copy.dispose();
+  });
+
   it('has pointier default tipLength=0.3', () => {
     const arrow = new Arrow();
     expect(arrow.getTipLength()).toBe(0.3);

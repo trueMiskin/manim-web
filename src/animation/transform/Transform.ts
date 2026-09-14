@@ -56,6 +56,7 @@ export class Transform extends Animation {
   }
 
   override begin(): void {
+    this._strategy?.reset?.();
     super.begin();
     this._strategy = this._selectStrategy();
     this._strategy.begin(this, this.mobject, this.target);
@@ -70,6 +71,18 @@ export class Transform extends Animation {
     if (!this._strategy) throw new Error('Transform.finish requires strategy');
     this._strategy.finish(this, this.mobject, this.target);
     super.finish();
+  }
+
+  override reset(): void {
+    this._strategy?.reset?.();
+    this._strategy = null;
+    super.reset();
+  }
+
+  override dispose(): void {
+    this._strategy?.reset?.();
+    this._strategy = null;
+    super.dispose();
   }
 }
 
