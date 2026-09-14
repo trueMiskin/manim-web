@@ -1,114 +1,184 @@
-/**
- * RecordingScene - the scene proxy passed to `Player.sequence(builder)`.
- *
- * Captures `play()` / `wait()` / `nextSlide()` calls into the player's
- * MasterTimeline without actually running animations. Visible to user code
- * only via the builder callback; not exported from the public surface.
- */
-
 import { Scene } from '../core/Scene';
+import { Mobject } from '../core/Mobject';
 import { Animation } from '../animation/Animation';
 import { AnimationGroup } from '../animation/AnimationGroup';
-import { MasterTimeline, SlideOptions } from '../animation/MasterTimeline';
+import { MasterTimeline, type Segment, type SlideOptions } from '../animation/MasterTimeline';
+import { prepareMobjects } from '../core/readiness';
+import { captureScene, restoreScene, type SceneCheckpoint } from './SceneCheckpoint';
 
+interface CompiledSegment {
+  segment: Segment;
+  start: SceneCheckpoint;
+  end: SceneCheckpoint;
+}
+
+/**
+ * Sequential construction context. Awaited play/wait evaluates on a fixed clock,
+ * so subsequent author calculations observe the final state. Compilation retains
+ * immutable checkpoints and restores them before evaluating any requested time.
+ * Updaters must keep mutable state in mobjects (captureState for custom classes).
+ */
 export class RecordingScene {
-  private _realScene: Scene;
-  private _masterTimeline: MasterTimeline;
+  private readonly _known = new Set<Mobject>();
+  private readonly _compiled: CompiledSegment[] = [];
+  private readonly _stepIds = new Set<string>();
+  private readonly _initial: SceneCheckpoint;
 
-  constructor(scene: Scene, masterTimeline: MasterTimeline) {
-    this._realScene = scene;
-    this._masterTimeline = masterTimeline;
+  constructor(
+    private _realScene: Scene,
+    private _masterTimeline: MasterTimeline,
+  ) {
+    this._initial = captureScene(_realScene);
   }
 
-  /** Proxy for scene.play() — records animations into the master timeline. */
   async play(...animations: Animation[]): Promise<void> {
     if (animations.length === 0) return;
-
-    // Collect all nested animations for scene.add + begin()
-    const allAnimations = this._collectAll(animations);
-
-    // Sync geometry so begin() can detect children
-    for (const anim of allAnimations) {
-      if (anim.mobject._dirty) {
-        anim.mobject._syncToThree();
-        anim.mobject._dirty = false;
+    for (const animation of this._collectAll(animations)) {
+      // Include targets before begin/cleanup can swap them into the scene.
+      for (const value of Object.values(animation)) {
+        if (value instanceof Mobject) this._known.add(value);
       }
+      this._known.add(animation.mobject);
     }
-
-    // Record segment BEFORE begin() so addSegment captures the correct
-    // pre-animation opacity. begin() may modify mobject opacity (e.g.
-    // Create's opacity fallback sets it to 0), which would corrupt the
-    // saved value used for visibility restoration during seek/playback.
-    this._masterTimeline.addSegment(animations);
-
-    // Initialize top-level animations
-    for (const anim of animations) {
-      anim.begin();
-    }
-
-    // Add to real scene (so they're visible when we seek)
-    for (const anim of allAnimations) {
-      if (!this._realScene.mobjects.has(anim.mobject)) {
-        this._realScene.add(anim.mobject);
-        // Mark as animation-introduced so MasterTimeline hides it
-        // until its segment starts (scene.add sets createdAtBeginning=true
-        // which would bypass the hiding logic in MasterTimeline.update).
-        anim.mobject.createdAtBeginning = false;
-      }
-    }
+    await prepareMobjects([...this._realScene.mobjects, ...this._known]);
+    const start = captureScene(this._realScene, this._known);
+    const segment = this._masterTimeline.addSegment(animations);
+    this._begin(animations);
+    this._advance(segment, segment.endTime - segment.startTime);
+    await prepareMobjects(this._realScene.mobjects);
+    this._compiled.push({ segment, start, end: captureScene(this._realScene, this._known) });
   }
 
-  /**
-   * Start a new slide. Inspired by manim-slides' `Scene.next_slide(...)`:
-   * options apply to the slide that *follows* this call (every play()/wait()
-   * up to the next `nextSlide()` belongs to that slide).
-   *
-   * Supported options: `{ loop, autoNext }`. manim-slides' `name`,
-   * `playback_rate`, and `notes` are not implemented.
-   *
-   * If `nextSlide()` is never called inside a `sequence()`, each play()/wait()
-   * becomes its own slide. The moment the first `nextSlide()` appears, all
-   * plays in the sequence — including any before that first call — are grouped
-   * by boundary; plays before the first boundary form an implicit slide 0 with
-   * default options.
-   */
-  async nextSlide(opts: SlideOptions = {}): Promise<void> {
-    this._masterTimeline.beginSlide(opts);
+  async wait(duration = 1): Promise<void> {
+    if (!Number.isFinite(duration) || duration < 0)
+      throw new Error('Wait duration must be finite and nonnegative.');
+    await prepareMobjects(this._realScene.mobjects);
+    const start = captureScene(this._realScene, this._known);
+    const segment = this._masterTimeline.addWaitSegment(duration);
+    this._advance(segment, duration);
+    this._compiled.push({ segment, start, end: captureScene(this._realScene, this._known) });
   }
 
-  /** Proxy for scene.wait() — records a wait segment. */
-  async wait(duration: number = 1): Promise<void> {
-    this._masterTimeline.addWaitSegment(duration);
+  async nextSlide(options: SlideOptions = {}): Promise<void> {
+    this._masterTimeline.beginSlide(options);
   }
 
-  /** Pass-through: add mobjects directly to the scene. */
-  add(...args: Parameters<Scene['add']>): ReturnType<Scene['add']> {
-    return this._realScene.add(...args);
+  /** A named animation interval defines navigation, notes and printing together. */
+  async step(
+    options: SlideOptions & { id: string },
+    build: () => Promise<unknown> | void,
+  ): Promise<void> {
+    if (this._stepIds.has(options.id)) throw new Error(`Duplicate checkpoint ID: ${options.id}`);
+    this._stepIds.add(options.id);
+    this._masterTimeline.beginSlide(options);
+    const before = this._masterTimeline.segmentCount;
+    await build();
+    // Static authored states also need an explicit, addressable checkpoint.
+    if (this._masterTimeline.segmentCount === before) await this.wait(0);
+    const last = this._compiled[this._compiled.length - 1];
+    if (last) last.end = captureScene(this._realScene, this._known);
   }
 
-  /** Pass-through: remove mobjects from the scene. */
-  remove(...args: Parameters<Scene['remove']>): ReturnType<Scene['remove']> {
-    return this._realScene.remove(...args);
+  add(...mobjects: Mobject[]): Scene {
+    mobjects.forEach((object) => this._known.add(object));
+    return this._realScene.add(...mobjects);
   }
 
-  /** Pass-through: access the camera. */
+  remove(...mobjects: Mobject[]): Scene {
+    mobjects.forEach((object) => this._known.add(object));
+    return this._realScene.remove(...mobjects);
+  }
+
   get camera() {
     return this._realScene.camera;
   }
-
-  /** Pass-through: batch updates. */
+  get scene(): Scene {
+    return this._realScene;
+  }
   batch(callback: () => void): void {
     this._realScene.batch(callback);
   }
 
-  private _collectAll(animations: Animation[]): Animation[] {
-    const result: Animation[] = [];
-    for (const anim of animations) {
-      result.push(anim);
-      if (anim instanceof AnimationGroup) {
-        result.push(...this._collectAll(anim.animations));
+  /** Complete compilation and return the live scene to its first authored state. */
+  async finish(): Promise<void> {
+    await prepareMobjects(this._realScene.mobjects);
+    const finalState = captureScene(this._realScene, this._known);
+    this._masterTimeline.finalizeSlides();
+    this._masterTimeline.setEvaluator((time, segmentIndex, position) => {
+      const compiled =
+        segmentIndex === undefined
+          ? this._compiled.find(({ segment }) => time <= segment.endTime)
+          : this._compiled[segmentIndex];
+      if (!compiled) {
+        restoreScene(this._realScene, finalState);
+        return;
       }
+      const { segment, start, end } = compiled;
+      if (position !== 'start' && time >= segment.endTime) {
+        restoreScene(this._realScene, end);
+        return;
+      }
+      for (const animation of segment.animations) animation.reset();
+      restoreScene(this._realScene, start);
+      this._begin(segment.animations);
+      this._advance(segment, Math.max(0, time - segment.startTime));
+    });
+  }
+
+  rollback(): void {
+    restoreScene(this._realScene, this._initial);
+  }
+
+  /** Release recorded objects that are no longer owned by the live scene. */
+  disposeDetached(): void {
+    const retained = new Set(this._initial.objects.map(({ object }) => object));
+    const candidates = new Set<Mobject>(this._known);
+    for (const compiled of this._compiled) {
+      compiled.start.objects.forEach(({ object }) => candidates.add(object));
+      compiled.end.objects.forEach(({ object }) => candidates.add(object));
     }
-    return result;
+    for (const object of candidates) {
+      if (!retained.has(object) && !object.parent && !this._realScene.mobjects.has(object))
+        object.dispose();
+    }
+  }
+
+  private _begin(animations: Animation[]): void {
+    for (const animation of animations) {
+      animation.startTime = 0;
+      animation.begin();
+    }
+    for (const animation of this._collectAll(animations)) {
+      if (animation instanceof AnimationGroup || animation.mobject === this.camera.frame) continue;
+      if (!this._realScene.mobjects.has(animation.mobject) && !animation.mobject.parent)
+        this._realScene.add(animation.mobject);
+    }
+  }
+
+  private _advance(segment: Segment, elapsed: number): void {
+    const duration = segment.endTime - segment.startTime;
+    let previous = 0;
+    const tick = (time: number) => {
+      for (const animation of segment.animations) animation.update(time - previous, time);
+      for (const object of this._realScene.mobjects) object.update(time - previous);
+      this.camera.updateFrame(time - previous);
+      previous = time;
+    };
+    tick(0);
+    const ticks = Math.floor(elapsed * 60 + 1e-9);
+    for (let i = 1; i <= ticks; i++) tick(i / 60);
+    if (elapsed - previous > 1e-9) tick(elapsed);
+    if (elapsed >= duration) {
+      for (const animation of this._collectAll(segment.animations))
+        animation.cleanUpFromScene(this._realScene);
+    }
+  }
+
+  private _collectAll(animations: Animation[]): Animation[] {
+    return animations.flatMap((animation) =>
+      animation instanceof AnimationGroup
+        ? [animation, ...this._collectAll(animation.animations)]
+        : [animation],
+    );
   }
 }

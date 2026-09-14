@@ -823,10 +823,10 @@ describe('unwrite() factory', () => {
 
 describe('AddTextLetterByLetter', () => {
   describe('constructor', () => {
-    it('sets default duration to 1', () => {
+    it('derives duration from the grapheme count and timePerChar', () => {
       const mob = new MockTextMobject('Hello');
       const anim = new AddTextLetterByLetter(mob);
-      expect(anim.duration).toBe(1);
+      expect(anim.duration).toBe(0.5);
     });
 
     it('accepts custom duration', () => {
@@ -967,10 +967,10 @@ describe('addTextLetterByLetter() factory', () => {
 
 describe('RemoveTextLetterByLetter', () => {
   describe('constructor', () => {
-    it('sets default duration to 1', () => {
+    it('derives duration from the grapheme count and timePerChar', () => {
       const mob = new MockTextMobject('Hello');
       const anim = new RemoveTextLetterByLetter(mob);
-      expect(anim.duration).toBe(1);
+      expect(anim.duration).toBe(0.5);
     });
 
     it('accepts custom duration', () => {
@@ -1121,28 +1121,33 @@ describe('AddTextWordByWord', () => {
       const anim = new AddTextWordByWord(mob);
       anim.begin();
       expect(mob.getText()).toBe('');
-      expect((anim as any)._words).toEqual(['Hello', 'World']);
+      anim.interpolate(0.5);
+      expect(mob.getText()).toBe('Hello ');
     });
 
     it('handles multiple spaces', () => {
       const mob = new MockTextMobject('Hello   World   Foo');
       const anim = new AddTextWordByWord(mob);
       anim.begin();
-      expect((anim as any)._words).toEqual(['Hello', 'World', 'Foo']);
+      // MIGRATION: word reveals retain the exact source whitespace at every prefix.
+      anim.interpolate(2 / 3);
+      expect(mob.getText()).toBe('Hello   World   ');
     });
 
     it('handles single word', () => {
       const mob = new MockTextMobject('Hello');
       const anim = new AddTextWordByWord(mob);
       anim.begin();
-      expect((anim as any)._words).toEqual(['Hello']);
+      anim.interpolate(1);
+      expect(mob.getText()).toBe('Hello');
     });
 
     it('handles empty text', () => {
       const mob = new MockTextMobject('');
       const anim = new AddTextWordByWord(mob);
       anim.begin();
-      expect((anim as any)._words).toEqual([]);
+      anim.interpolate(1);
+      expect(mob.getText()).toBe('');
     });
   });
 
@@ -1160,8 +1165,8 @@ describe('AddTextWordByWord', () => {
       const anim = new AddTextWordByWord(mob);
       anim.begin();
       anim.interpolate(0.5);
-      // Math.floor(0.5 * 4) = 2
-      expect(mob.getText()).toBe('Hello World');
+      // Math.floor(0.5 * 4) = 2, including the original inter-word space.
+      expect(mob.getText()).toBe('Hello World ');
     });
 
     it('at alpha=1: all words shown', () => {
@@ -1178,7 +1183,6 @@ describe('AddTextWordByWord', () => {
       const anim = new AddTextWordByWord(mob);
       anim.begin();
       anim.interpolate(0.5);
-      // _words.length is 0, condition fails
       expect(mob.getText()).toBe('');
     });
   });
@@ -2498,11 +2502,11 @@ describe('Full lifecycle integration', () => {
 
       // 3 words, alpha = 1/3 -> numWords = 1
       anim.interpolate(1 / 3);
-      expect(mob.getText()).toBe('Hello');
+      expect(mob.getText()).toBe('Hello ');
 
       // alpha = 2/3 -> numWords = 2
       anim.interpolate(2 / 3);
-      expect(mob.getText()).toBe('Hello World');
+      expect(mob.getText()).toBe('Hello World ');
 
       anim.finish();
       expect(mob.getText()).toBe('Hello World Foo');

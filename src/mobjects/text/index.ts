@@ -7,6 +7,12 @@
 
 // Text - Basic text rendering
 export { Text, type TextOptions } from './Text';
+export {
+  textGraphemes,
+  splitTexGroups,
+  type SemanticTextRun,
+  type Grapheme,
+} from './TextSemantics';
 
 // Per-substring style runs (t2c/t2w/t2s layout model for Text)
 export { type TextStyleMaps, type TextStyleRun, buildStyledTextLines } from './textStyleRuns';

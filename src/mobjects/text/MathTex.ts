@@ -20,6 +20,8 @@ import { DEFAULT_FONT_SIZE_IN_WORLD_SPACE, DEFAULT_FONT_SIZE_PT } from '../../co
 import typia from 'typia';
 import { renderLatexToSVG } from './MathJaxRenderer';
 import { logger } from '../../utils/logger';
+import * as THREE from 'three';
+import { semanticOpacity, splitTexGroups, type SemanticTextRun } from './TextSemantics';
 
 /** MathJax SVG uses ~1000 font units per em. */
 const MATHJAX_SVG_UNITS_PER_EM = 1000;
@@ -43,6 +45,13 @@ export interface MathTexOptions {
   height?: number;
   /** Custom LaTeX macros as { name: expansion }. */
   macros?: Record<string, string>;
+  /** Explicit identities for repeated matching parts, in source order. */
+  matchingKeys?: string[];
+}
+
+/** True when `m` is a multi-part group that carries its own LaTeX fragment. */
+export function isMathTexPart(m: Mobject): m is VGroup & { _latex: string } {
+  return m instanceof VGroup && '_latex' in m && typeof m._latex === 'string';
 }
 
 /** True when `m` exposes a `getLatex()` method. */
@@ -69,13 +78,22 @@ export class MathTex extends VGroup {
   protected _renderPromise: Promise<void> | null = null;
   /** Error from rendering, if any */
   protected _renderError: Error | null = null;
+  protected _sourceLatex: string;
+  protected _partLatex: string[];
+  protected _matchingKeys: string[];
 
-  constructor(options: MathTexOptions) {
+  constructor(options: MathTexOptions, render = true) {
     super();
 
     // Validate options via typia and read required latex field
     typia.assert<MathTexOptions>(options);
     const latex = options.latex;
+    this._sourceLatex = Array.isArray(latex) ? latex.join('') : latex;
+    this._partLatex = Array.isArray(latex) ? [...latex] : splitTexGroups(latex);
+    this._matchingKeys = options.matchingKeys ? [...options.matchingKeys] : [...this._partLatex];
+    if (this._matchingKeys.length !== this._partLatex.length) {
+      throw new Error('MathTex matchingKeys must contain one key per semantic part.');
+    }
 
     const {
       color = WHITE,
@@ -101,16 +119,19 @@ export class MathTex extends VGroup {
     // Set position
     this.position.set(position[0], position[1], position[2]);
 
-    if (Array.isArray(latex)) {
+    if (Array.isArray(latex) || this._partLatex.length > 1 || this._partLatex[0] !== latex) {
       // Multi-part mode: render the FULL expression as one MathJax call
       // for correct layout, then split VMobjects into parts by glyph count.
       this._isMultiPart = true;
-      this._latex = latex.join('');
-      this._renderPromise = this._renderMultiPart(latex);
+      this._latex = this._partLatex.join('');
+      if (render)
+        this._renderPromise = this._renderMultiPart(this._partLatex).catch((error: unknown) => {
+          this._renderError = error instanceof Error ? error : new Error(String(error));
+        });
     } else {
       this._isMultiPart = false;
       this._latex = latex;
-      this._startRender();
+      if (render) this._startRender();
     }
   }
 
@@ -153,6 +174,98 @@ export class MathTex extends VGroup {
    */
   getLatex(): string {
     return this._latex;
+  }
+
+  /** Original authored LaTeX, including explicit matching boundaries. */
+  getSourceLatex(): string {
+    return this._sourceLatex;
+  }
+
+  /** Semantic matching units; glyph children inside a unit are kept together. */
+  getMatchingParts(): VMobject[] {
+    return this._isMultiPart ? [...this._parts] : [this];
+  }
+
+  getMatchingKey(): string {
+    return this._matchingKeys[0] ?? this._latex;
+  }
+
+  override captureState(): Record<string, unknown> {
+    return {
+      ...super.captureState(),
+      latex: this._latex,
+      sourceLatex: this._sourceLatex,
+      partLatex: [...this._partLatex],
+      matchingKeys: [...this._matchingKeys],
+      fontSize: this._fontSize,
+    };
+  }
+
+  override restoreCapturedState(state: Record<string, unknown>): void {
+    super.restoreCapturedState(state);
+    if (typeof state.latex === 'string') this._latex = state.latex;
+    if (typeof state.sourceLatex === 'string') this._sourceLatex = state.sourceLatex;
+    if (Array.isArray(state.partLatex)) this._partLatex = state.partLatex.map(String);
+    if (Array.isArray(state.matchingKeys)) this._matchingKeys = state.matchingKeys.map(String);
+    if (typeof state.fontSize === 'number') this._fontSize = state.fontSize;
+    if (this._isMultiPart)
+      this._parts = this.children.filter(isMathTexPart);
+  }
+
+  /** LaTeX semantics for copying/accessibility; math source is not ordinary prose. */
+  getSemanticTextRuns(): SemanticTextRun[] {
+    let offset = 0;
+    return this.getMatchingParts().map((part, index) => {
+      const text = this._partLatex[index] ?? this._latex;
+      const sourceRange: [number, number] = [offset, offset + text.length];
+      offset += text.length;
+      const object = part._syncWorldMatrices();
+      const inverse = object.matrixWorld.clone().invert();
+      const box = new THREE.Box3();
+      const collect = (node: Mobject) => {
+        if (node instanceof VMobject) {
+          const matrix = node.getThreeObject().matrixWorld;
+          for (const point of node.getLocalPoints())
+            box.expandByPoint(
+              new THREE.Vector3(point[0], point[1], point[2])
+                .applyMatrix4(matrix)
+                .applyMatrix4(inverse),
+            );
+        }
+        node.children.forEach(collect);
+      };
+      collect(part);
+      if (box.isEmpty()) box.set(new THREE.Vector3(), new THREE.Vector3());
+      const opacity = semanticOpacity(part);
+      return {
+        id: `${this.id}:part:${index}`,
+        mobjectId: this.id,
+        kind: 'math',
+        source: this._latex,
+        text,
+        sourceRange,
+        graphemeRange: [index, index + 1],
+        readingOrder: index,
+        font: {
+          family: 'serif',
+          size: this._fontSize,
+          weight: 'normal',
+          style: 'normal',
+          lineHeight: 1,
+          letterSpacing: 0,
+        },
+        color: part.color,
+        opacity,
+        visible: opacity > 0 && text.length > 0,
+        bounds: {
+          x: box.min.x,
+          y: box.min.y,
+          width: box.max.x - box.min.x,
+          height: box.max.y - box.min.y,
+        },
+        matrixWorld: object.matrixWorld.toArray(),
+      };
+    });
   }
 
   /**
@@ -483,8 +596,9 @@ export class MathTex extends VGroup {
     // Assign glyphs from the full render to parts by count
     let glyphIdx = 0;
     for (let i = 0; i < latexParts.length; i++) {
-      const partGroup = new MathTex._PartGroup(this);
+      const partGroup = new MathTex._PartGroup();
       partGroup._latex = latexParts[i];
+      partGroup._matchingKey = this._matchingKeys[i];
       partGroup._color = this._color;
 
       const count = partGlyphCounts[i];
@@ -524,7 +638,8 @@ export class MathTex extends VGroup {
   private static _PartGroup = class extends VGroup {
     _latex: string = '';
     _color: string = WHITE;
-    constructor(_parent: MathTex) {
+    _matchingKey: string = '';
+    constructor() {
       super();
     }
 
@@ -542,22 +657,50 @@ export class MathTex extends VGroup {
     getLatex(): string {
       return this._latex;
     }
+
+    getMatchingKey(): string {
+      return this._matchingKey;
+    }
+
+    override copy(): VGroup {
+      const copy = new MathTex._PartGroup();
+      copy._latex = this._latex;
+      copy._matchingKey = this._matchingKey;
+      this._copyBaseAttributesInto(copy);
+      return copy;
+    }
   };
 
   override copy(): MathTex {
-    const latexValue = this._isMultiPart ? this._parts.map((p) => p._latex) : this._latex;
-    const copy = new MathTex({
-      latex: latexValue,
-      color: this._color,
-      fontSize: this._fontSize,
-      displayMode: this._displayMode,
-      position: [this.position.x, this.position.y, this.position.z],
-      strokeWidth: this._svgStrokeWidth,
-      fillOpacity: this._svgFillOpacity,
-      height: this._targetHeight,
-      macros: this._macros,
-    });
+    const latexValue = this._isMultiPart ? this._partLatex : this._latex;
+    const copy = new MathTex(
+      {
+        latex: latexValue,
+        color: this._color,
+        fontSize: this._fontSize,
+        displayMode: this._displayMode,
+        position: [this.position.x, this.position.y, this.position.z],
+        strokeWidth: this._svgStrokeWidth,
+        fillOpacity: this._svgFillOpacity,
+        height: this._targetHeight,
+        macros: this._macros,
+        matchingKeys: this._matchingKeys,
+      },
+      false,
+    );
+    copy._sourceLatex = this._sourceLatex;
     this._copyBaseAttributesInto(copy, { copyChildren: true });
+    copy._parts = this._isMultiPart
+      ? copy.children.filter(isMathTexPart)
+      : [];
+    if (this.children.length === 0 && this._renderPromise) {
+      copy._renderPromise = this.waitForRender().then(() => {
+        for (const child of this.children) copy.add(child.copy());
+        copy._parts = this._isMultiPart
+          ? copy.children.filter(isMathTexPart)
+          : [];
+      });
+    }
     return copy;
   }
 }

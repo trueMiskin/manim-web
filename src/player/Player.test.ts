@@ -4,6 +4,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Player, PlayerOptions } from './Player';
 import { PlayerController, PlayerControllerCallbacks } from './PlayerController';
+import { Square } from '../mobjects/geometry/Rectangle';
+import { Animation } from '../animation/Animation';
 
 // ---------------------------------------------------------------------------
 // Helper: create a container and Player (headless Scene, no WebGL needed)
@@ -22,21 +24,13 @@ function createPlayer(opts: PlayerOptions = {}): { player: Player; container: HT
 }
 
 function createMockAnimation(overrides: { dirty?: boolean; duration?: number } = {}) {
-  const mockMobject = {
-    _dirty: overrides.dirty ?? false,
-    _syncToThree: vi.fn(),
-    opacity: 1,
-    dispose: vi.fn(),
-  };
-  const mockAnimation = {
-    mobject: mockMobject,
-    duration: overrides.duration ?? 1,
-    begin: vi.fn(),
-    reset: vi.fn(),
-    update: vi.fn(),
-    isFinished: vi.fn(() => false),
-    startTime: null as number | null,
-  };
+  const mockMobject = new Square();
+  vi.spyOn(mockMobject, '_syncToThree');
+  class TestAnimation extends Animation {
+    interpolate(_alpha: number): void {}
+  }
+  const mockAnimation = new TestAnimation(mockMobject, { duration: overrides.duration ?? 1 });
+  vi.spyOn(mockAnimation, 'begin');
   return { mockMobject, mockAnimation };
 }
 
@@ -762,7 +756,8 @@ describe('Player _startLoop render loop', () => {
   });
 
   it('_startLoop updates mobject updaters', async () => {
-    const mockMob = { update: vi.fn(), dispose: vi.fn() };
+    const mockMob = new Square();
+    vi.spyOn(mockMob, 'update');
     (player.scene.mobjects as Set<unknown>).add(mockMob);
 
     await player.sequence(async (scene) => {
@@ -1234,20 +1229,22 @@ describe('RecordingScene pass-through methods', () => {
   });
 
   it('add delegates to scene.add', async () => {
-    const addSpy = vi.spyOn(player.scene, 'add').mockReturnThis();
+    const mob = new Square();
+    const addSpy = vi.spyOn(player.scene, 'add');
     await player.sequence(async (scene) => {
-      scene.add('fake-mobject' as never);
+      scene.add(mob);
     });
-    expect(addSpy).toHaveBeenCalledWith('fake-mobject');
+    expect(addSpy).toHaveBeenCalledWith(mob);
     addSpy.mockRestore();
   });
 
   it('remove delegates to scene.remove', async () => {
-    const removeSpy = vi.spyOn(player.scene, 'remove').mockReturnThis();
+    const mob = new Square();
+    const removeSpy = vi.spyOn(player.scene, 'remove');
     await player.sequence(async (scene) => {
-      scene.remove('fake-mobject' as never);
+      scene.remove(mob);
     });
-    expect(removeSpy).toHaveBeenCalledWith('fake-mobject');
+    expect(removeSpy).toHaveBeenCalledWith(mob);
     removeSpy.mockRestore();
   });
 
@@ -1277,7 +1274,7 @@ describe('RecordingScene pass-through methods', () => {
 
   it('play records animation segments into the timeline', async () => {
     const { mockMobject, mockAnimation } = createMockAnimation();
-    const addSpy = vi.spyOn(player.scene, 'add').mockReturnThis();
+    const addSpy = vi.spyOn(player.scene, 'add');
 
     await player.sequence(async (scene) => {
       await scene.play(mockAnimation as never);
@@ -1292,7 +1289,7 @@ describe('RecordingScene pass-through methods', () => {
 
   it('play syncs dirty mobjects before begin', async () => {
     const { mockMobject, mockAnimation } = createMockAnimation({ dirty: true, duration: 0.5 });
-    const addSpy = vi.spyOn(player.scene, 'add').mockReturnThis();
+    const addSpy = vi.spyOn(player.scene, 'add');
 
     await player.sequence(async (scene) => {
       await scene.play(mockAnimation as never);
@@ -1303,20 +1300,20 @@ describe('RecordingScene pass-through methods', () => {
     addSpy.mockRestore();
   });
 
-  it('play does not re-add mobjects already in scene', async () => {
+  it('play preserves the identity of mobjects already in scene', async () => {
     const { mockMobject, mockAnimation } = createMockAnimation();
 
     // Pre-add the mobject to the scene's mobjects set
     (player.scene.mobjects as Set<unknown>).add(mockMobject);
 
-    const addSpy = vi.spyOn(player.scene, 'add').mockReturnThis();
+    const addSpy = vi.spyOn(player.scene, 'add');
 
     await player.sequence(async (scene) => {
       await scene.play(mockAnimation as never);
     });
 
-    // add should NOT be called for this mobject since it's already present
-    expect(addSpy).not.toHaveBeenCalledWith(mockMobject);
+    // MIGRATION: compilation and seeking preserve object identity and membership.
+    expect([...player.scene.mobjects]).toEqual([mockMobject]);
     addSpy.mockRestore();
   });
 
@@ -1331,7 +1328,7 @@ describe('RecordingScene pass-through methods', () => {
 
   it('nextSlide({loop:true}) before play() produces a looping slide', async () => {
     const { mockAnimation } = createMockAnimation();
-    const addSpy = vi.spyOn(player.scene, 'add').mockReturnThis();
+    const addSpy = vi.spyOn(player.scene, 'add');
 
     await player.sequence(async (scene) => {
       await scene.nextSlide({ loop: true });
@@ -1345,7 +1342,7 @@ describe('RecordingScene pass-through methods', () => {
 
   it('default play() produces a slide with loop=false, autoNext=false', async () => {
     const { mockAnimation } = createMockAnimation();
-    const addSpy = vi.spyOn(player.scene, 'add').mockReturnThis();
+    const addSpy = vi.spyOn(player.scene, 'add');
 
     await player.sequence(async (scene) => {
       await scene.play(mockAnimation as never);
@@ -1361,7 +1358,7 @@ describe('RecordingScene pass-through methods', () => {
     const a1 = createMockAnimation();
     const a2 = createMockAnimation();
     const a3 = createMockAnimation();
-    const addSpy = vi.spyOn(player.scene, 'add').mockReturnThis();
+    const addSpy = vi.spyOn(player.scene, 'add');
 
     await player.sequence(async (scene) => {
       await scene.nextSlide();

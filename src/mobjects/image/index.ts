@@ -20,6 +20,8 @@ export interface ImageFilterOptions {
  * Options for creating an ImageMobject
  */
 export interface ImageMobjectOptions {
+  /** Texture sampling. Use nearest for discrete scientific grids. Default linear. */
+  resampling?: 'linear' | 'nearest';
   /** Image source: URL or base64 data URI. Either source or pixelData is required. */
   source?: string;
   /** 2D grayscale pixel array (values 0-255). Each inner array is a row. Either source or pixelData is required. */
@@ -74,6 +76,7 @@ export interface ImageMobjectOptions {
  * ```
  */
 export class ImageMobject extends TexturedMobject {
+  private _resampling: 'linear' | 'nearest';
   protected _source: string;
   protected _pixelData: number[][] | undefined;
   protected _width: number | undefined;
@@ -95,6 +98,7 @@ export class ImageMobject extends TexturedMobject {
 
   constructor(options: ImageMobjectOptions) {
     super();
+    this._resampling = options.resampling ?? 'linear';
 
     const {
       source = '',
@@ -176,19 +180,20 @@ export class ImageMobject extends TexturedMobject {
 
     // Upscale with bilinear interpolation for smooth gradients
     // (matches Python Manim's Cairo interpolation on tiny pixel arrays)
-    const scale = 128;
+    const scale = this._resampling === 'nearest' ? 1 : 128;
     const canvas = document.createElement('canvas');
     canvas.width = cols * scale;
     canvas.height = rows * scale;
     const ctx = canvas.getContext('2d')!;
-    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingEnabled = this._resampling !== 'nearest';
     ctx.imageSmoothingQuality = 'high';
     ctx.drawImage(srcCanvas, 0, 0, canvas.width, canvas.height);
 
     const texture = new THREE.CanvasTexture(canvas);
     texture.colorSpace = THREE.SRGBColorSpace;
-    texture.magFilter = THREE.LinearFilter;
-    texture.minFilter = THREE.LinearMipmapLinearFilter;
+    texture.magFilter = this._resampling === 'nearest' ? THREE.NearestFilter : THREE.LinearFilter;
+    texture.minFilter =
+      this._resampling === 'nearest' ? THREE.NearestFilter : THREE.LinearMipmapLinearFilter;
     texture.generateMipmaps = true;
 
     this._texture = texture;
@@ -216,6 +221,10 @@ export class ImageMobject extends TexturedMobject {
       this._source,
       // onLoad callback
       (texture) => {
+        texture.magFilter =
+          this._resampling === 'nearest' ? THREE.NearestFilter : THREE.LinearFilter;
+        texture.minFilter =
+          this._resampling === 'nearest' ? THREE.NearestFilter : THREE.LinearMipmapLinearFilter;
         this._texture = texture;
         this._naturalWidth = texture.image.width;
         this._naturalHeight = texture.image.height;
@@ -701,6 +710,7 @@ export class ImageMobject extends TexturedMobject {
 
   override copy(): ImageMobject {
     const copy = new ImageMobject({
+      resampling: this._resampling,
       source: this._source || undefined,
       pixelData: this._pixelData,
       width: this._width,

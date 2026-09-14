@@ -103,8 +103,14 @@ export function serializeMobject(mob: Mobject): MobjectState {
     opacity: mob.opacity,
     strokeWidth: mob.strokeWidth,
     fillOpacity: mob.fillOpacity,
-    style: { ...mob.style },
+    style: {
+      ...mob.style,
+      fillOpacity: mob.fillOpacity,
+      strokeOpacity: mob.opacity,
+      strokeWidth: mob.strokeWidth,
+    },
     children: [],
+    custom: structuredClone(mob.captureState()),
   };
 
   // VMobject-specific properties
@@ -161,11 +167,15 @@ export function deserializeMobject(mob: Mobject, state: MobjectState): void {
       mob.setPoints(state.points3D);
     } else if (state.points2D && state.points2D.length > 0) {
       mob.setPoints(state.points2D);
+    } else if (state.points3D || state.points2D) {
+      mob.setPoints([]);
     }
     if (state.visiblePointCount !== undefined) {
       mob.setVisiblePointCount(state.visiblePointCount);
     }
   }
+
+  if (state.custom) mob.restoreCapturedState(structuredClone(state.custom));
 
   // Recursively restore children by index
   const minLen = Math.min(mob.children.length, state.children.length);

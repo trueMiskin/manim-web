@@ -657,10 +657,10 @@ describe('AddTextWordByWord', () => {
     anim.begin();
     // 3 words: at alpha=0.34, should show 1 word
     anim.interpolate(0.34);
-    expect(m.getText()).toBe('Hello');
+    expect(m.getText()).toBe('Hello ');
     // At alpha=0.67, should show 2 words
     anim.interpolate(0.67);
-    expect(m.getText()).toBe('Hello World');
+    expect(m.getText()).toBe('Hello World ');
   });
 
   it('finish restores full text', () => {

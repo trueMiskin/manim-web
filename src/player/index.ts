@@ -13,3 +13,5 @@ export {
   type QualityPreset,
   type ExportDefaults,
 } from './ExportSettingsUI';
+
+export { RecordingScene } from './RecordingScene';

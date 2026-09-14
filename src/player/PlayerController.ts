@@ -18,36 +18,53 @@ export class PlayerController {
   private _container: HTMLElement;
   private _callbacks: PlayerControllerCallbacks;
   private _onKeyDown: (e: KeyboardEvent) => void;
+  private _onClick: (e: MouseEvent) => void;
+  private _onMouseDown: () => void;
+  private _addedTabIndex = false;
 
-  constructor(container: HTMLElement, callbacks: PlayerControllerCallbacks) {
+  constructor(
+    container: HTMLElement,
+    callbacks: PlayerControllerCallbacks,
+    options: { keyboard?: boolean; pointer?: boolean } = {},
+  ) {
     this._container = container;
     this._callbacks = callbacks;
 
     // Make container focusable so it receives key events
-    if (!container.hasAttribute('tabindex')) {
+    if (options.keyboard !== false && !container.hasAttribute('tabindex')) {
+      this._addedTabIndex = true;
       container.setAttribute('tabindex', '0');
       container.style.outline = 'none';
     }
 
     this._onKeyDown = (e: KeyboardEvent) => this._handleKey(e);
-    container.addEventListener('keydown', this._onKeyDown);
+    if (options.keyboard !== false) container.addEventListener('keydown', this._onKeyDown);
 
     // Click on canvas (not controls) toggles play/pause
-    container.addEventListener('click', (e) => {
+    this._onClick = (e) => {
       const target = e.target as HTMLElement;
       // Ignore clicks inside the player bar overlay
       if (target.closest('[data-player-bar]')) return;
       this._callbacks.onPlayPause();
-    });
+    };
 
     // Focus container on click so keyboard works
-    container.addEventListener('mousedown', () => {
-      container.focus();
-    });
+    this._onMouseDown = () => container.focus();
+    if (options.pointer !== false) {
+      container.addEventListener('click', this._onClick);
+      container.addEventListener('mousedown', this._onMouseDown);
+    }
   }
 
   private _handleKey(e: KeyboardEvent): void {
     // Don't intercept if user is typing in an input
+    if (
+      e.ctrlKey ||
+      e.metaKey ||
+      e.altKey ||
+      (e.target as HTMLElement)?.closest('[contenteditable="true"]')
+    )
+      return;
     const tag = (e.target as HTMLElement)?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
 
@@ -81,5 +98,8 @@ export class PlayerController {
 
   dispose(): void {
     this._container.removeEventListener('keydown', this._onKeyDown);
+    this._container.removeEventListener('click', this._onClick);
+    this._container.removeEventListener('mousedown', this._onMouseDown);
+    if (this._addedTabIndex) this._container.removeAttribute('tabindex');
   }
 }

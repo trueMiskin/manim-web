@@ -48,6 +48,20 @@ export interface TracedPathOptions {
  * ```
  */
 export class TracedPath extends VMobject {
+  override captureState(): Record<string, unknown> {
+    return {
+      pathData: this._pathData.map(({ point, time }) => ({ point: [...point], time })),
+      elapsedTime: this._elapsedTime,
+      lastPosition: this._lastPosition ? [...this._lastPosition] : null,
+    };
+  }
+
+  override restoreCapturedState(state: Record<string, unknown>): void {
+    this._pathData = state.pathData as { point: number[]; time: number }[];
+    this._elapsedTime = state.elapsedTime as number;
+    this._lastPosition = state.lastPosition as number[] | null;
+  }
+
   /** The mobject being tracked */
   private _trackedMobject: Mobject;
 

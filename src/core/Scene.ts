@@ -1,3 +1,4 @@
+import { prepareMobjects } from './readiness';
 import * as THREE from 'three';
 import { Renderer, RendererOptions, IRenderer } from './Renderer';
 import { NullRenderer } from './NullRenderer';
@@ -361,6 +362,11 @@ export class Scene {
     return this._isPlaying;
   }
 
+  /** Camera used to project a mobject, including fixed overlays in 3D scenes. */
+  getCameraForMobject(_mobject: Mobject): THREE.Camera {
+    return this._camera.getCamera();
+  }
+
   /**
    * Whether a render loop is active (play() or wait()).
    * Used by ThreeDScene to avoid duplicate orbit rAF loops.
@@ -676,22 +682,7 @@ export class Scene {
       // Wait for any async renders (e.g. SVG-based MathTex) to complete before
       // starting animations. Without this, Create/DrawBorderThenFill would
       // animate an empty mobject because SVG paths haven't loaded yet.
-      const renderPromises: Promise<void>[] = [];
-      const collectRenders = (mobject: Mobject) => {
-        const asyncMob: Mobject & { waitForRender?: () => Promise<void> } = mobject;
-        if (typeof asyncMob.waitForRender === 'function') {
-          renderPromises.push(asyncMob.waitForRender().catch(() => {}));
-        }
-        for (const child of mobject.children) {
-          collectRenders(child);
-        }
-      };
-      for (const anim of allAnimations) {
-        collectRenders(anim.mobject);
-      }
-      if (renderPromises.length > 0) {
-        await Promise.all(renderPromises);
-      }
+      await prepareMobjects(allAnimations.map((animation) => animation.mobject));
 
       // Force geometry sync so begin() can detect Line2 children for dash-reveal
       // animations (e.g. MathTex Create). This must happen before begin() but

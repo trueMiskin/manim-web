@@ -2,6 +2,8 @@ import * as THREE from 'three';
 import { Vector3Tuple } from '../../core/Mobject';
 import { TexturedMobject } from '../../core/TexturedMobject';
 import { TextGlyphGroup } from './TextGlyphGroup';
+import { loadFontFace } from './TextFont';
+import { canvasSemanticRuns, textGraphemes, type SemanticTextRun } from './TextSemantics';
 import type { SkeletonizeOptions } from '../../utils/skeletonize';
 import { DEFAULT_FONT_SIZE_PT, DEFAULT_FONT_SIZE_IN_WORLD_SPACE } from '../../constants/fontRender';
 import {
@@ -94,57 +96,6 @@ export interface TextOptions {
  * const multiline = new Text({ text: 'Line 1\nLine 2\nLine 3' });
  * ```
  */
-/**
- * Global cache: fontUrl -> { familyName, loadPromise }
- * Ensures the same OTF/TTF is loaded only once via @font-face,
- * and all Text instances sharing a URL get the same CSS family name.
- */
-const fontFaceCache = new Map<string, { familyName: string; loadPromise: Promise<void> }>();
-let fontFaceIdCounter = 0;
-
-/**
- * Load a font URL as a CSS @font-face rule (cached).
- * Returns the unique font-family name assigned to this URL.
- *
- * Why the extra `document.fonts.load(...)` call:
- * `face.load()` + `document.fonts.add(face)` is enough for `measureText`,
- * but Canvas 2D's `fillText` font matching is lazy — until the font has
- * been used in DOM layout or explicitly resolved via `document.fonts.load`,
- * the first draw after add can fall back to the previous family. This
- * showed up as wrong-font flickers in `Create`/`Transform` (issue #309).
- */
-async function loadFontFace(url: string): Promise<string> {
-  // Font loading unavailable in non-DOM environments or DOM emulators that
-  // omit the CSS Font Loading API (e.g. happy-dom). Probe the specific
-  // members used below — a partial mock that has `.fonts` but not `.load`
-  // or `.add` would otherwise crash.
-  if (
-    typeof document === 'undefined' ||
-    typeof FontFace === 'undefined' ||
-    typeof document.fonts?.add !== 'function' ||
-    typeof document.fonts?.load !== 'function'
-  ) {
-    return '';
-  }
-
-  const cached = fontFaceCache.get(url);
-  if (cached) {
-    await cached.loadPromise;
-    return cached.familyName;
-  }
-
-  const familyName = `ManimFont_${fontFaceIdCounter++}`;
-  const face = new FontFace(familyName, `url(${url})`);
-  const loadPromise = (async () => {
-    await face.load();
-    document.fonts.add(face);
-    await document.fonts.load(`1em '${familyName}'`);
-  })();
-
-  fontFaceCache.set(url, { familyName, loadPromise });
-  await loadPromise;
-  return familyName;
-}
 
 export class Text extends TexturedMobject {
   protected _text: string;
@@ -154,6 +105,7 @@ export class Text extends TexturedMobject {
   protected _fontStyle: string;
   /** Flag to track when canvas content needs re-rendering (text/color/font changes) */
   protected _canvasDirty: boolean = true;
+  private _canvasMaterialKey = '';
   protected _lineHeight: number;
   protected _letterSpacing: number;
   protected _textAlign: 'left' | 'center' | 'right';
@@ -167,6 +119,10 @@ export class Text extends TexturedMobject {
   protected _gradient: string[] | null = null;
   /** Cached glyph group (created lazily by loadGlyphs) */
   protected _glyphGroup: TextGlyphGroup | null = null;
+  private _glyphCacheKey: string | null = null;
+  private _glyphPromise: Promise<TextGlyphGroup | null> | null = null;
+  private _glyphRevision = 0;
+  protected _visibleRange: [number, number] | null = null;
 
   /** Off-screen canvas for text rendering */
   protected _canvas: HTMLCanvasElement | null = null;
@@ -247,6 +203,51 @@ export class Text extends TexturedMobject {
     return this._text;
   }
 
+  /** Logical displayed content, excluding markup syntax in subclasses. */
+  getTextContent(): string {
+    return this._text;
+  }
+
+  /** Currently visible graphemes; getText() retains the complete authored content. */
+  getVisibleText(): string {
+    const [start, end] = this.getVisibleRange();
+    return textGraphemes(this.getTextContent())
+      .slice(start, end)
+      .map((part) => part.text)
+      .join('');
+  }
+
+  /** Half-open grapheme range, independent of texture dimensions and line layout. */
+  getVisibleRange(): [number, number] {
+    return this._visibleRange
+      ? [...this._visibleRange]
+      : [0, textGraphemes(this.getTextContent()).length];
+  }
+
+  /** @post this.getText() === old.getText() */
+  setVisibleRange(start: number, end: number): this {
+    const length = textGraphemes(this.getTextContent()).length;
+    const first = Math.max(0, Math.min(length, Math.floor(start)));
+    const last = Math.max(first, Math.min(length, Math.floor(end)));
+    const current = this.getVisibleRange();
+    if (current[0] === first && current[1] === last) return this;
+    this._visibleRange = [first, last];
+    this._canvasDirty = true;
+    this._renderToCanvas();
+    this._markDirty();
+    return this;
+  }
+
+  protected _visibleFragment(text: string, offset: number): { text: string; prefix: string } {
+    const graphemes = textGraphemes(this.getTextContent());
+    const [first, last] = this.getVisibleRange();
+    const start = graphemes[first]?.start ?? this.getTextContent().length;
+    const end = last > 0 ? (graphemes[last - 1]?.end ?? this.getTextContent().length) : 0;
+    const from = Math.max(0, Math.min(text.length, start - offset));
+    const to = Math.max(from, Math.min(text.length, end - offset));
+    return { text: text.slice(from, to), prefix: text.slice(0, from) };
+  }
+
   /**
    * Set new text content and re-render
    * @param text - New text to display
@@ -254,6 +255,8 @@ export class Text extends TexturedMobject {
    */
   setText(text: string): this {
     this._text = text;
+    this._visibleRange = null;
+    this._invalidateGlyphs();
     this._canvasDirty = true;
     this._renderToCanvas();
     this._updateMesh();
@@ -302,6 +305,7 @@ export class Text extends TexturedMobject {
    */
   setFontSize(size: number): this {
     this._fontSize = size;
+    this._invalidateGlyphs();
     this._canvasDirty = true;
     this._renderToCanvas();
     this._updateMesh();
@@ -346,11 +350,143 @@ export class Text extends TexturedMobject {
    */
   setFontFamily(family: string): this {
     this._fontFamily = family;
+    this._invalidateGlyphs();
     this._canvasDirty = true;
     this._renderToCanvas();
     this._updateMesh();
     this._markDirty();
     return this;
+  }
+
+  override get color(): string {
+    return super.color;
+  }
+
+  override set color(value: string) {
+    if (super.color === value) return;
+    super.color = value;
+    this._canvasDirty = true;
+    this._markDirty();
+  }
+
+  override captureState(): Record<string, unknown> {
+    return {
+      ...super.captureState(),
+      text: this._text,
+      fontSize: this._fontSize,
+      fontFamily: this._fontFamily,
+      fontWeight: this._fontWeight,
+      fontStyle: this._fontStyle,
+      lineHeight: this._lineHeight,
+      letterSpacing: this._letterSpacing,
+      textAlign: this._textAlign,
+      visibleRange: this._visibleRange ? [...this._visibleRange] : null,
+      visualSize: [this._worldWidth, this._worldHeight],
+    };
+  }
+
+  override restoreCapturedState(state: Record<string, unknown>): void {
+    super.restoreCapturedState(state);
+    if (typeof state.text !== 'string') return;
+    const glyphKey = this._getGlyphCacheKey();
+    const canvasKey = this._getCanvasContentKey();
+    const previousWidth = this._worldWidth;
+    const previousHeight = this._worldHeight;
+    this._text = state.text;
+    if (typeof state.fontSize === 'number') this._fontSize = state.fontSize;
+    if (typeof state.fontFamily === 'string') this._fontFamily = state.fontFamily;
+    if (typeof state.fontWeight === 'string' || typeof state.fontWeight === 'number')
+      this._fontWeight = state.fontWeight;
+    if (typeof state.fontStyle === 'string') this._fontStyle = state.fontStyle;
+    if (typeof state.lineHeight === 'number') this._lineHeight = state.lineHeight;
+    if (typeof state.letterSpacing === 'number') this._letterSpacing = state.letterSpacing;
+    if (state.textAlign === 'left' || state.textAlign === 'center' || state.textAlign === 'right')
+      this._textAlign = state.textAlign;
+    this._visibleRange = Array.isArray(state.visibleRange)
+      ? [Number(state.visibleRange[0]), Number(state.visibleRange[1])]
+      : null;
+    if (glyphKey !== this._getGlyphCacheKey()) this._invalidateGlyphs();
+    if (canvasKey !== this._getCanvasContentKey() || this._canvasDirty) {
+      this._renderToCanvas();
+    }
+    if (previousWidth !== this._worldWidth || previousHeight !== this._worldHeight)
+      this._updateMesh();
+    if (Array.isArray(state.visualSize)) {
+      const width = Number(state.visualSize[0]);
+      const height = Number(state.visualSize[1]);
+      if (width !== this._worldWidth || height !== this._worldHeight)
+        this.applyVisualSize(width, height);
+    }
+    this._markDirty();
+  }
+
+  private _getCanvasContentKey(): string {
+    return JSON.stringify([
+      this._text,
+      this._fontSize,
+      this._fontFamily,
+      this._fontWeight,
+      this._fontStyle,
+      this._lineHeight,
+      this._letterSpacing,
+      this._textAlign,
+      this._visibleRange,
+    ]);
+  }
+
+  /** Visible runs in reading order, with layout metrics from the same canvas as the image. */
+  getSemanticTextRuns(): SemanticTextRun[] {
+    this.getThreeObject();
+    const RESOLUTION_SCALE = getTextResolutionScale();
+    const source = this.getTextContent();
+    const padding = this._fontSize * RESOLUTION_SCALE * 0.2;
+    const lineHeight = this._fontSize * RESOLUTION_SCALE * this._lineHeight;
+    if (this._ctx) this._ctx.font = this._buildFontString();
+    const measure = (content: string) =>
+      (this._ctx?.measureText(content).width ?? 0) +
+      Math.max(0, textGraphemes(content).length - 1) * this._letterSpacing * RESOLUTION_SCALE;
+    let offset = 0;
+    const runs = this._measureText().lines.map((line, index) => {
+      const lineOffset = Math.max(offset, source.indexOf(line, offset));
+      const fragment = this._visibleFragment(line, lineOffset);
+      const content = fragment.text;
+      const start = lineOffset + fragment.prefix.length;
+      const width = measure(line);
+      const left =
+        this._textAlign === 'left'
+          ? padding
+          : this._textAlign === 'right'
+            ? (this._canvas?.width || 0) - padding - width
+            : ((this._canvas?.width || 0) - width) / 2;
+      const prefix = fragment.prefix;
+      const prefixWidth = measure(prefix) + (prefix ? this._letterSpacing * RESOLUTION_SCALE : 0);
+      offset = lineOffset + line.length;
+      return {
+        text: content,
+        sourceOffset: start,
+        font: {
+          family: this._fontFamily,
+          size: this._fontSize,
+          weight: this._fontWeight,
+          style: this._fontStyle,
+          lineHeight: this._lineHeight,
+          letterSpacing: this._letterSpacing,
+        },
+        color: this.color,
+        x: left + prefixWidth,
+        y: padding + index * lineHeight,
+        width: measure(content),
+        height: lineHeight,
+      };
+    });
+    return canvasSemanticRuns(
+      this,
+      source,
+      runs,
+      this._canvas,
+      this._worldWidth,
+      this._worldHeight,
+    );
   }
 
   /**
@@ -402,7 +538,9 @@ export class Text extends TexturedMobject {
     let maxWidth = 0;
     for (const line of lines) {
       const metrics = this._ctx.measureText(line);
-      const lineWidth = metrics.width + (line.length - 1) * this._letterSpacing * RESOLUTION_SCALE;
+      const lineWidth =
+        metrics.width +
+        Math.max(0, textGraphemes(line).length - 1) * this._letterSpacing * RESOLUTION_SCALE;
       maxWidth = Math.max(maxWidth, lineWidth);
     }
 
@@ -464,26 +602,50 @@ export class Text extends TexturedMobject {
         break;
     }
 
-    // Draw each line
+    const graphemes = textGraphemes(this._text);
+    const [visibleStart, visibleEnd] = this.getVisibleRange();
+    const sourceStart = graphemes[visibleStart]?.start ?? this._text.length;
+    const sourceEnd = visibleEnd > 0 ? (graphemes[visibleEnd - 1]?.end ?? this._text.length) : 0;
+    let lineOffset = 0;
+
+    // Draw visible text at its position in the complete line, without reflow.
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
+      lineOffset = Math.max(lineOffset, this._text.indexOf(line, lineOffset));
       const y = padding + i * scaledLineHeight;
+      const from = Math.max(0, Math.min(line.length, sourceStart - lineOffset));
+      const to = Math.max(from, Math.min(line.length, sourceEnd - lineOffset));
+      const visibleLine = line.slice(from, to);
+      const partial = from > 0 || to < line.length;
+      const spacing = this._letterSpacing * RESOLUTION_SCALE;
+      const fullWidth =
+        this._ctx.measureText(line).width + Math.max(0, textGraphemes(line).length - 1) * spacing;
+      const prefix = line.slice(0, from);
+      const prefixWidth =
+        this._ctx.measureText(prefix).width + textGraphemes(prefix).length * spacing;
+      const left =
+        this._textAlign === 'left'
+          ? textX
+          : textX - fullWidth / (this._textAlign === 'center' ? 2 : 1);
+      const drawX = partial ? left + prefixWidth : textX;
+      this._ctx.textAlign = partial ? 'left' : this._textAlign;
+      lineOffset += line.length;
 
       // Apply letter spacing if needed
       if (this._letterSpacing > 0) {
-        this._drawTextWithLetterSpacing(line, textX, y, scaledFontSize);
+        this._drawTextWithLetterSpacing(visibleLine, drawX, y, scaledFontSize, partial);
       } else {
         // Draw stroke if strokeWidth > 0
         if (this.strokeWidth > 0) {
           this._ctx.strokeStyle = this.color;
           this._ctx.lineWidth = this.strokeWidth * RESOLUTION_SCALE;
-          this._ctx.strokeText(line, textX, y);
+          this._ctx.strokeText(visibleLine, drawX, y);
         }
 
         // Draw fill (use fillOpacity only; dynamic _opacity is handled by material)
         this._ctx.fillStyle = this.color;
         this._ctx.globalAlpha = this.fillOpacity;
-        this._ctx.fillText(line, textX, y);
+        this._ctx.fillText(visibleLine, drawX, y);
       }
     }
 
@@ -504,6 +666,7 @@ export class Text extends TexturedMobject {
 
     // Update texture if it exists
     if (this._texture) {
+      this._texture.image = this._canvas;
       this._texture.needsUpdate = true;
     }
   }
@@ -516,6 +679,7 @@ export class Text extends TexturedMobject {
     startX: number,
     y: number,
     _fontSize: number,
+    leftAligned = false,
   ): void {
     if (!this._ctx) return;
 
@@ -524,19 +688,20 @@ export class Text extends TexturedMobject {
     let currentX = startX;
 
     // Adjust starting position based on alignment
-    if (this._textAlign === 'center') {
-      const totalWidth = this._ctx.measureText(text).width + (text.length - 1) * scaledSpacing;
+    const graphemes = textGraphemes(text);
+    if (!leftAligned && this._textAlign === 'center') {
+      const totalWidth =
+        this._ctx.measureText(text).width + Math.max(0, graphemes.length - 1) * scaledSpacing;
       currentX = startX - totalWidth / 2;
-    } else if (this._textAlign === 'right') {
-      const totalWidth = this._ctx.measureText(text).width + (text.length - 1) * scaledSpacing;
+    } else if (!leftAligned && this._textAlign === 'right') {
+      const totalWidth =
+        this._ctx.measureText(text).width + Math.max(0, graphemes.length - 1) * scaledSpacing;
       currentX = startX - totalWidth;
     }
 
     this._ctx.textAlign = 'left';
 
-    for (let i = 0; i < text.length; i++) {
-      const char = text[i];
-
+    for (const { text: char } of graphemes) {
       // Draw stroke if strokeWidth > 0
       if (this.strokeWidth > 0) {
         this._ctx.strokeStyle = this.color;
@@ -698,18 +863,29 @@ export class Text extends TexturedMobject {
       throw new Error('Text.applyTextureFrom requires source MeshBasicMaterial');
     }
 
-    const nextTexture = sourceMaterial.map;
+    // The image is handed off briefly until applyContentFrom redraws our canvas.
+    // Both the texture and its Source must be independent: Texture.clone() alone
+    // shares Source, so changing image would otherwise mutate the target too.
+    const nextTexture = sourceMaterial.map?.clone() ?? null;
+    if (nextTexture && sourceMaterial.map)
+      nextTexture.source = new THREE.TextureSource(sourceMaterial.map.image);
     const previousTexture = this._texture;
     this._handoffTextureMap(material, nextTexture, previousTexture);
     this._texture = nextTexture;
+    this._canvasDirty = true;
   }
 
   applyContentFrom(other: TexturedMobject): void {
     if (!(other instanceof Text)) {
       throw new Error('Text.applyContentFrom requires Text');
     }
-    this._text = other._text;
-    this._canvasDirty = false;
+    this.color = other.color;
+    this.fillOpacity = other.fillOpacity;
+    this.strokeWidth = other.strokeWidth;
+    this.restoreCapturedState({
+      ...other.captureState(),
+      visualSize: [this._worldWidth, this._worldHeight],
+    });
   }
 
   applyVisualSize(width: number, height: number): void {
@@ -732,8 +908,10 @@ export class Text extends TexturedMobject {
    */
   protected override _syncMaterialToThree(): void {
     // Only re-render canvas when text/color/font changed (not for opacity-only changes)
-    if (this._canvasDirty) {
+    const materialKey = JSON.stringify([this.color, this.fillOpacity, this.strokeWidth]);
+    if (this._canvasDirty || this._canvasMaterialKey !== materialKey) {
       this._renderToCanvas();
+      this._canvasMaterialKey = materialKey;
     }
 
     if (this._mesh) {
@@ -748,7 +926,46 @@ export class Text extends TexturedMobject {
    * Get the cached TextGlyphGroup (null until loadGlyphs() resolves).
    */
   getGlyphGroup(): TextGlyphGroup | null {
+    if (this._glyphGroup && this._glyphCacheKey !== this._getGlyphCacheKey())
+      this._invalidateGlyphs();
     return this._glyphGroup;
+  }
+
+  private _getGlyphCacheKey(): string {
+    return JSON.stringify([
+      this._text,
+      this._fontUrl,
+      this._fontSize,
+      this._fontFamily,
+      this._fontWeight,
+      this._fontStyle,
+      this.color,
+      this.fillOpacity,
+      this.strokeWidth,
+    ]);
+  }
+
+  protected _invalidateGlyphs(): void {
+    this._glyphRevision++;
+    this._glyphGroup?.dispose();
+    this._glyphGroup = null;
+    this._glyphCacheKey = null;
+    this._glyphPromise = null;
+  }
+
+  /** Wait for CSS font metrics before layout inspection or capture. */
+  async waitForRender(): Promise<void> {
+    if (this._fontUrl) {
+      const familyName = await loadFontFace(this._fontUrl);
+      if (familyName) this._fontFamily = `'${familyName}'`;
+    }
+    if (typeof document !== 'undefined' && typeof document.fonts?.load === 'function') {
+      await document.fonts.load(this._buildFontString(), this._text);
+    }
+    this._canvasDirty = true;
+    this._renderToCanvas();
+    this._updateMesh();
+    this._markDirty();
   }
 
   /**
@@ -764,12 +981,29 @@ export class Text extends TexturedMobject {
     useSkeletonStroke?: boolean;
     skeletonOptions?: SkeletonizeOptions;
   }): Promise<TextGlyphGroup | null> {
-    if (this._glyphGroup) return this._glyphGroup;
+    if (this.getGlyphGroup()) return this._glyphGroup;
     if (!this._fontUrl) return null;
+    if (this._glyphPromise) return this._glyphPromise;
+    const pending = this._loadGlyphs(options);
+    this._glyphPromise = pending;
+    try {
+      return await pending;
+    } finally {
+      if (this._glyphPromise === pending) this._glyphPromise = null;
+    }
+  }
+
+  private async _loadGlyphs(options?: {
+    useSkeletonStroke?: boolean;
+    skeletonOptions?: SkeletonizeOptions;
+  }): Promise<TextGlyphGroup | null> {
+    const initialKey = this._getGlyphCacheKey();
+    const revision = this._glyphRevision;
 
     // Load the font URL as a CSS @font-face (cached across all Text instances)
     // so the Canvas 2D renderer uses the same font file as the opentype.js glyph strokes.
-    const familyName = await loadFontFace(this._fontUrl);
+    const familyName = await loadFontFace(this._fontUrl!);
+    if (initialKey !== this._getGlyphCacheKey() || revision !== this._glyphRevision) return null;
     // `loadFontFace` returns '' when the CSS Font Loading API is unavailable
     // (non-DOM, or DOM emulator without `document.fonts`); keep the existing
     // _fontFamily in that case so the canvas renderer doesn't try to use the
@@ -781,17 +1015,24 @@ export class Text extends TexturedMobject {
       this._updateMesh();
     }
 
-    this._glyphGroup = new TextGlyphGroup({
+    const key = this._getGlyphCacheKey();
+    const group = new TextGlyphGroup({
       text: this._text,
-      fontUrl: this._fontUrl,
+      fontUrl: this._fontUrl!,
       fontSize: this._fontSize,
       color: this.color,
       strokeWidth: 2,
       useSkeletonStroke: options?.useSkeletonStroke,
       skeletonOptions: options?.skeletonOptions,
     });
-    await this._glyphGroup.waitForReady();
-    return this._glyphGroup;
+    await group.waitForReady();
+    if (key !== this._getGlyphCacheKey() || revision !== this._glyphRevision) {
+      group.dispose();
+      return null;
+    }
+    this._glyphGroup = group;
+    this._glyphCacheKey = key;
+    return group;
   }
 
   /**
@@ -831,6 +1072,7 @@ export class Text extends TexturedMobject {
       gradient: this._gradient ?? undefined,
     });
     this._copyBaseAttributesInto(copy, { copyChildren: false });
+    if (this._visibleRange) copy.setVisibleRange(...this._visibleRange);
     this._carryVisualSizeTo(copy);
     return copy;
   }
@@ -866,6 +1108,7 @@ export class Text extends TexturedMobject {
    * Clean up Three.js and canvas resources
    */
   override dispose(): void {
+    this._invalidateGlyphs();
     this._texture?.dispose();
     if (this._mesh) {
       this._mesh.geometry.dispose();

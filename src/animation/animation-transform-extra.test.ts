@@ -1679,7 +1679,7 @@ describe('TransformAnimations', () => {
 // ── TransformMatchingShapes extra coverage ──────────────────────────────────
 
 describe('TransformMatchingShapes - fade-in with parent', () => {
-  it('adds fade-in copies to parent when source has a parent', () => {
+  it('keeps fade-in copies owned by the source when it has a parent', () => {
     // Source has 1 child, target has 2 children -> 1 unmatched target fades in
     const parentGroup = new VMobject();
     const srcChild = vm([
@@ -1702,8 +1702,9 @@ describe('TransformMatchingShapes - fade-in with parent', () => {
 
     const anim = new TransformMatchingShapes(src, tgt);
     anim.begin();
-    // parentGroup should now have extra child for fade-in
-    expect(parentGroup.children.length).toBeGreaterThan(1);
+    // Temporary parts remain reachable for root-level and nested source objects.
+    expect(parentGroup.children).toEqual([src]);
+    expect(src.children.length).toBeGreaterThan(1);
     anim.interpolate(0.5);
     anim.finish();
     expect(anim.isFinished()).toBe(true);
@@ -1925,8 +1926,9 @@ describe('TransformMatchingTex - asymmetric transformMismatches', () => {
     });
     anim.begin();
 
-    // parentGroup should have fade-in copies added
-    expect(parentGroup.children.length).toBeGreaterThan(1);
+    // Temporary parts are owned by the source, so removal and seek can clean them up.
+    expect(parentGroup.children).toEqual([src]);
+    expect(src.children.length).toBeGreaterThan(1);
 
     anim.interpolate(0.5);
     anim.finish();

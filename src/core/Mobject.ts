@@ -218,7 +218,7 @@ export abstract class Mobject {
 
   setStyle(style: Partial<MobjectStyle>): this {
     this._style = { ...this._style, ...style };
-    if (style.strokeColor !== undefined) this.color = style.strokeColor;
+    if (style.strokeColor !== undefined) this._color = style.strokeColor;
     if (style.fillOpacity !== undefined) this.fillOpacity = style.fillOpacity;
     if (style.strokeOpacity !== undefined) this._opacity = style.strokeOpacity;
     if (style.strokeWidth !== undefined) this.strokeWidth = style.strokeWidth;
@@ -1429,6 +1429,16 @@ export abstract class Mobject {
   }
 
   // ── State Management ─────────────────────────────────────────────
+
+  /** Subclass data needed for deterministic animation checkpoints.
+   * Return structured-cloneable data; object identities belong in the scene graph.
+   */
+  captureState(): Record<string, unknown> {
+    return {};
+  }
+
+  /** Restore the subclass data returned by captureState(). */
+  restoreCapturedState(_state: Record<string, unknown>): void {}
 
   generateTarget(): Mobject {
     this.targetCopy = this.copy();

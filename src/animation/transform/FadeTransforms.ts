@@ -5,7 +5,7 @@
 
 import { VMobject } from '../../core/VMobject';
 import { Animation, AnimationOptions } from '../Animation';
-import { Transform } from './Transform';
+import { ReplacementTransform } from './Transform';
 import { lerpPoint } from '../../utils/math';
 import { alignVmobjectPair } from './TransformPairing';
 
@@ -264,7 +264,7 @@ export type TransformFromCopyOptions = AnimationOptions;
  * TransformFromCopy animation - transforms from a copy of the source to target.
  * Useful when you want to show a transformation while keeping the original.
  */
-export class TransformFromCopy extends Transform {
+export class TransformFromCopy extends ReplacementTransform {
   /** The original source mobject (kept unchanged) */
   readonly originalSource: VMobject;
 

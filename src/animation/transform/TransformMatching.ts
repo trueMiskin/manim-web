@@ -8,11 +8,16 @@
  */
 
 import { VMobject } from '../../core/VMobject';
-import { Animation, AnimationOptions } from '../Animation';
+import { serializeMobject, deserializeMobject, type MobjectState } from '../../core/StateManager';
+import { Animation, AnimationOptions, type AnimationScene } from '../Animation';
 import { hungarian, hungarianFromSimilarity } from '../../utils/hungarian';
 import { lerp, lerpPoint } from '../../utils/math';
 import { alignCompoundPathsForTransform } from '../../core/VMobjectTransformAlignment';
 import {
+  ownMatchingPart,
+  removeMatchingParts,
+  matchingFade,
+  matchingLeafCopies,
   MatchedPart,
   FadingPart,
   getBoundingBox,
@@ -58,6 +63,7 @@ export class TransformMatchingShapes extends Animation<VMobject> {
   readonly fadeRatio: number;
 
   /** Matched parts that will transform */
+  private _sourceState: MobjectState | null = null;
   private _matchedParts: MatchedPart[] = [];
 
   /** Source parts that will fade out (no match in target) */
@@ -164,15 +170,7 @@ export class TransformMatchingShapes extends Animation<VMobject> {
     for (let i = 0; i < targetSubmobs.length; i++) {
       if (!usedTargetIndices.has(i)) {
         const vmob = targetSubmobs[i];
-        // Add to scene as copy, starting invisible
-        const copy = vmob.copy();
-        copy.opacity = 0;
-
-        // Add to parent of source mobject
-        const parent = this.mobject.parent;
-        if (parent) {
-          parent.add(copy);
-        }
+        const copy = ownMatchingPart(this.mobject, vmob);
 
         this._fadeInParts.push({
           mobject: copy,
@@ -212,6 +210,11 @@ export class TransformMatchingShapes extends Animation<VMobject> {
   }
 
   override begin(): void {
+    removeMatchingParts(this._fadeInParts);
+    this._matchedParts = [];
+    this._fadeOutParts = [];
+    this._fadeInParts = [];
+    this._sourceState ??= serializeMobject(this.mobject);
     super.begin();
     this._matchSubmobjects();
   }
@@ -231,9 +234,7 @@ export class TransformMatchingShapes extends Animation<VMobject> {
 
     // Handle fading parts with adjusted timing
     // Fade out happens in first half, fade in happens in second half
-    const fadeOutAlpha = Math.min(1, alpha / this.fadeRatio);
-    const fadeInStart = 1 - this.fadeRatio;
-    const fadeInAlpha = Math.max(0, (alpha - fadeInStart) / this.fadeRatio);
+    const [fadeOutAlpha, fadeInAlpha] = matchingFade(alpha, this.fadeRatio);
 
     for (const part of this._fadeOutParts) {
       part.mobject.opacity = lerp(part.startOpacity, 0, Math.min(1, fadeOutAlpha));
@@ -266,6 +267,26 @@ export class TransformMatchingShapes extends Animation<VMobject> {
       );
     }
     part.source._markDirty();
+  }
+
+  override reset(): void {
+    removeMatchingParts(this._fadeInParts);
+    this._fadeInParts = [];
+    super.reset();
+    if (this._sourceState) deserializeMobject(this.mobject, this._sourceState);
+  }
+
+  override cleanUpFromScene(scene: AnimationScene): void {
+    removeMatchingParts(this._fadeInParts);
+    this._fadeInParts = [];
+    const parent = this.mobject.parent;
+    if (parent) {
+      parent.remove(this.mobject);
+      parent.add(this.target);
+    } else {
+      scene.remove(this.mobject);
+      scene.add(this.target);
+    }
   }
 
   override finish(): void {
@@ -330,8 +351,14 @@ function hasGetLatex(m: object): m is { getLatex(): string } {
   return 'getLatex' in m && typeof m.getLatex === 'function';
 }
 
+/** True when `m` exposes a `getMatchingKey()` method (semantic TeX matching unit). */
+function hasGetMatchingKey(m: object): m is { getMatchingKey(): string } {
+  return 'getMatchingKey' in m && typeof m.getMatchingKey === 'function';
+}
+
 function defaultTexKey(vmobject: VMobject): string {
   // Check if it's a MathTex or Tex with getLatex method
+  if (hasGetMatchingKey(vmobject)) return vmobject.getMatchingKey();
   if (hasGetLatex(vmobject)) {
     return vmobject.getLatex();
   }
@@ -374,6 +401,7 @@ export class TransformMatchingTex extends Animation<VMobject> {
   readonly transformMismatches: boolean;
 
   /** Matched parts that will transform */
+  private _sourceState: MobjectState | null = null;
   private _matchedParts: MatchedPart[] = [];
 
   /** Source parts that will fade out (no match in target) */
@@ -397,6 +425,12 @@ export class TransformMatchingTex extends Animation<VMobject> {
    * Get submobjects from a TeX mobject
    */
   private _getTexParts(vmobject: VMobject): VMobject[] {
+    const semantic = vmobject as VMobject & {
+      getMatchingParts?: () => VMobject[];
+      getLatex?: () => string;
+    };
+    if (typeof semantic.getMatchingParts === 'function') return semantic.getMatchingParts();
+    if (typeof semantic.getLatex === 'function') return [vmobject];
     // If the mobject has children (like a VGroup of TeX parts), use those
     const children = vmobject.children.filter((c): c is VMobject => c instanceof VMobject);
     if (children.length > 0) {
@@ -548,8 +582,27 @@ export class TransformMatchingTex extends Animation<VMobject> {
    * Add a matched pair
    */
   private _addMatchedPart(source: VMobject, target: VMobject): void {
-    const srcCopy = source.copy();
-    const tgtCopy = target.copy();
+    const sourceChildren = source.children.filter(
+      (child): child is VMobject => child instanceof VMobject,
+    );
+    const targetChildren = target.children.filter(
+      (child): child is VMobject => child instanceof VMobject,
+    );
+    if (sourceChildren.length > 0 && targetChildren.length > 0) {
+      const count = Math.min(sourceChildren.length, targetChildren.length);
+      for (let index = 0; index < count; index++)
+        this._addMatchedPart(sourceChildren[index], targetChildren[index]);
+      for (const child of sourceChildren.slice(count))
+        this._fadeOutParts.push({
+          mobject: child,
+          fadeIn: false,
+          startOpacity: child.opacity,
+          targetOpacity: 0,
+        });
+      for (const child of targetChildren.slice(count)) this._addFadeInPart(child);
+      return;
+    }
+    const [srcCopy, tgtCopy] = matchingLeafCopies(source, target);
     const srcLengths = source.getEffectiveSubpathLengths?.();
     const tgtLengths = target.getEffectiveSubpathLengths?.();
     const alignedCompound = alignCompoundPathsForTransform(
@@ -644,13 +697,7 @@ export class TransformMatchingTex extends Animation<VMobject> {
    * Add a fade-in part
    */
   private _addFadeInPart(vmob: VMobject): void {
-    const copy = vmob.copy();
-    copy.opacity = 0;
-
-    const parent = this.mobject.parent;
-    if (parent) {
-      parent.add(copy);
-    }
+    const copy = ownMatchingPart(this.mobject, vmob);
 
     this._fadeInParts.push({
       mobject: copy,
@@ -661,6 +708,12 @@ export class TransformMatchingTex extends Animation<VMobject> {
   }
 
   override begin(): void {
+    removeMatchingParts(this._fadeInParts);
+    this._matchedParts = [];
+    this._mismatchedPairs = [];
+    this._fadeOutParts = [];
+    this._fadeInParts = [];
+    this._sourceState ??= serializeMobject(this.mobject);
     super.begin();
     this._matchTexParts();
   }
@@ -695,9 +748,7 @@ export class TransformMatchingTex extends Animation<VMobject> {
     }
 
     // Handle fading parts
-    const fadeOutAlpha = Math.min(1, alpha / this.fadeRatio);
-    const fadeInStart = 1 - this.fadeRatio;
-    const fadeInAlpha = Math.max(0, (alpha - fadeInStart) / this.fadeRatio);
+    const [fadeOutAlpha, fadeInAlpha] = matchingFade(alpha, this.fadeRatio);
 
     for (const part of this._fadeOutParts) {
       part.mobject.opacity = lerp(part.startOpacity, 0, Math.min(1, fadeOutAlpha));
@@ -705,6 +756,26 @@ export class TransformMatchingTex extends Animation<VMobject> {
 
     for (const part of this._fadeInParts) {
       part.mobject.opacity = lerp(0, part.targetOpacity, Math.min(1, fadeInAlpha));
+    }
+  }
+
+  override reset(): void {
+    removeMatchingParts(this._fadeInParts);
+    this._fadeInParts = [];
+    super.reset();
+    if (this._sourceState) deserializeMobject(this.mobject, this._sourceState);
+  }
+
+  override cleanUpFromScene(scene: AnimationScene): void {
+    removeMatchingParts(this._fadeInParts);
+    this._fadeInParts = [];
+    const parent = this.mobject.parent;
+    if (parent) {
+      parent.remove(this.mobject);
+      parent.add(this.target);
+    } else {
+      scene.remove(this.mobject);
+      scene.add(this.target);
     }
   }
 

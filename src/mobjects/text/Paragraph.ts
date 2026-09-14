@@ -1,5 +1,11 @@
 import { Text, TextOptions } from './Text';
 import { getTextResolutionScale } from './textTexture';
+import {
+  canvasSemanticRuns,
+  textGraphemes,
+  type CanvasTextRun,
+  type SemanticTextRun,
+} from './TextSemantics';
 
 /**
  * Options for creating a Paragraph mobject
@@ -34,6 +40,7 @@ const PIXEL_TO_WORLD = 1 / 100;
  * ```
  */
 export class Paragraph extends Text {
+  private _semanticLayout: CanvasTextRun[] = [];
   protected _maxWidth: number;
   protected _alignment: 'left' | 'center' | 'right' | 'justify';
   protected _wrappedLines: string[] = [];
@@ -121,14 +128,15 @@ export class Paragraph extends Text {
         continue;
       }
 
-      const words = paragraph.split(/\s+/);
+      const words = paragraph.match(/\s*\S+\s*/gu) ?? [paragraph];
       let currentLine = '';
 
       for (const word of words) {
-        const testLine = currentLine ? `${currentLine} ${word}` : word;
+        const testLine = currentLine + word;
         const metrics = this._ctx.measureText(testLine);
         const testWidth =
-          metrics.width + (testLine.length - 1) * this._letterSpacing * RESOLUTION_SCALE;
+          metrics.width +
+          Math.max(0, textGraphemes(testLine).length - 1) * this._letterSpacing * RESOLUTION_SCALE;
 
         if (testWidth <= maxWidthPixels || currentLine === '') {
           currentLine = testLine;
@@ -166,7 +174,9 @@ export class Paragraph extends Text {
     let maxWidth = 0;
     for (const line of lines) {
       const metrics = this._ctx.measureText(line);
-      const lineWidth = metrics.width + (line.length - 1) * this._letterSpacing * RESOLUTION_SCALE;
+      const lineWidth =
+        metrics.width +
+        Math.max(0, textGraphemes(line).length - 1) * this._letterSpacing * RESOLUTION_SCALE;
       maxWidth = Math.max(maxWidth, lineWidth);
     }
 
@@ -213,15 +223,19 @@ export class Paragraph extends Text {
     const scaledLineHeight = scaledFontSize * this._lineHeight;
     const padding = scaledFontSize * 0.2;
 
+    let sourceOffset = 0;
+    this._semanticLayout = [];
     // Draw each line
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
+      const offset = Math.max(sourceOffset, this._text.indexOf(line, sourceOffset));
+      sourceOffset = offset + line.length;
       const y = padding + i * scaledLineHeight;
       const isLastLineOfParagraph =
         i === lines.length - 1 || (i < lines.length - 1 && this._isNewParagraph(lines, i));
 
       if (this._alignment === 'justify' && !isLastLineOfParagraph && line.trim().includes(' ')) {
-        this._drawJustifiedLine(line, padding, width - padding, y);
+        this._drawJustifiedLine(line, padding, width - padding, y, offset);
       } else {
         // Use regular alignment
         let textX: number;
@@ -242,26 +256,25 @@ export class Paragraph extends Text {
             break;
         }
 
-        // Draw stroke if strokeWidth > 0
-        if (this.strokeWidth > 0) {
-          this._ctx.strokeStyle = this.color;
-          this._ctx.lineWidth = this.strokeWidth * RESOLUTION_SCALE;
-          this._ctx.strokeText(line, textX, y);
-        }
-
-        // Draw fill
-        this._ctx.fillStyle = this.color;
-        this._ctx.globalAlpha = this.fillOpacity * this._opacity;
-        this._ctx.fillText(line, textX, y);
+        const measured = this._ctx.measureText(line).width;
+        const left =
+          this._alignment === 'center'
+            ? textX - measured / 2
+            : this._alignment === 'right'
+              ? textX - measured
+              : textX;
+        this._drawFragment(line, offset, left, y, scaledLineHeight);
       }
     }
 
     // Store world dimensions
     this._worldWidth = (width / RESOLUTION_SCALE) * PIXEL_TO_WORLD;
     this._worldHeight = (height / RESOLUTION_SCALE) * PIXEL_TO_WORLD;
+    this._canvasDirty = false;
 
     // Update texture if it exists
     if (this._texture) {
+      this._texture.image = this._canvas;
       this._texture.needsUpdate = true;
     }
   }
@@ -277,22 +290,25 @@ export class Paragraph extends Text {
   /**
    * Draw a line with justified spacing
    */
-  protected _drawJustifiedLine(line: string, startX: number, endX: number, y: number): void {
+  protected _drawJustifiedLine(
+    line: string,
+    startX: number,
+    endX: number,
+    y: number,
+    sourceOffset = 0,
+  ): void {
     if (!this._ctx) return;
 
     const RESOLUTION_SCALE = getTextResolutionScale();
     const words = line.trim().split(/\s+/);
     if (words.length <= 1) {
-      // Single word, draw normally
-      this._ctx.textAlign = 'left';
-      if (this.strokeWidth > 0) {
-        this._ctx.strokeStyle = this.color;
-        this._ctx.lineWidth = this.strokeWidth * RESOLUTION_SCALE;
-        this._ctx.strokeText(line, startX, y);
-      }
-      this._ctx.fillStyle = this.color;
-      this._ctx.globalAlpha = this.fillOpacity * this._opacity;
-      this._ctx.fillText(line, startX, y);
+      this._drawFragment(
+        line,
+        sourceOffset,
+        startX,
+        y,
+        this._fontSize * RESOLUTION_SCALE * this._lineHeight,
+      );
       return;
     }
 
@@ -311,21 +327,85 @@ export class Paragraph extends Text {
     this._ctx.textAlign = 'left';
     let currentX = startX;
 
-    for (let i = 0; i < words.length; i++) {
-      const word = words[i];
-
-      if (this.strokeWidth > 0) {
-        this._ctx.strokeStyle = this.color;
-        this._ctx.lineWidth = this.strokeWidth * RESOLUTION_SCALE;
-        this._ctx.strokeText(word, currentX, y);
-      }
-
-      this._ctx.fillStyle = this.color;
-      this._ctx.globalAlpha = this.fillOpacity * this._opacity;
-      this._ctx.fillText(word, currentX, y);
-
+    let offset = 0;
+    for (const word of words) {
+      offset = line.indexOf(word, offset);
+      this._drawFragment(
+        word,
+        sourceOffset + offset,
+        currentX,
+        y,
+        this._fontSize * RESOLUTION_SCALE * this._lineHeight,
+      );
+      offset += word.length;
       currentX += this._ctx.measureText(word).width + spaceWidth;
     }
+  }
+
+  private _drawFragment(text: string, offset: number, x: number, y: number, height: number): void {
+    if (!this._ctx) return;
+    const fragment = this._visibleFragment(text, offset);
+    const drawX = x + this._ctx.measureText(fragment.prefix).width;
+    this._ctx.textAlign = 'left';
+    if (this.strokeWidth > 0) {
+      this._ctx.strokeStyle = this.color;
+      this._ctx.lineWidth = this.strokeWidth * getTextResolutionScale();
+      this._ctx.strokeText(fragment.text, drawX, y);
+    }
+    this._ctx.fillStyle = this.color;
+    this._ctx.globalAlpha = this.fillOpacity;
+    this._ctx.fillText(fragment.text, drawX, y);
+    this._semanticLayout?.push({
+      text: fragment.text,
+      sourceOffset: offset + fragment.prefix.length,
+      x: drawX,
+      y,
+      width: this._ctx.measureText(fragment.text).width,
+      height,
+      font: {
+        family: this._fontFamily,
+        size: this._fontSize,
+        weight: this._fontWeight,
+        style: this._fontStyle,
+        lineHeight: this._lineHeight,
+        letterSpacing: this._letterSpacing,
+      },
+      color: this.color,
+    });
+  }
+
+  override getSemanticTextRuns(): SemanticTextRun[] {
+    this.getThreeObject();
+    return canvasSemanticRuns(
+      this,
+      this.getTextContent(),
+      this._semanticLayout,
+      this._canvas,
+      this._worldWidth,
+      this._worldHeight,
+    );
+  }
+
+  override captureState(): Record<string, unknown> {
+    return {
+      ...super.captureState(),
+      paragraphWidth: this._maxWidth,
+      paragraphAlignment: this._alignment,
+    };
+  }
+
+  override restoreCapturedState(state: Record<string, unknown>): void {
+    if (state.paragraphWidth !== this._maxWidth || state.paragraphAlignment !== this._alignment)
+      this._canvasDirty = true;
+    if (typeof state.paragraphWidth === 'number') this._maxWidth = state.paragraphWidth;
+    if (
+      state.paragraphAlignment === 'left' ||
+      state.paragraphAlignment === 'center' ||
+      state.paragraphAlignment === 'right' ||
+      state.paragraphAlignment === 'justify'
+    )
+      this._alignment = state.paragraphAlignment;
+    super.restoreCapturedState(state);
   }
 
   /**
@@ -347,6 +427,7 @@ export class Paragraph extends Text {
       alignment: this._alignment,
     });
     this._copyBaseAttributesInto(copy, { copyChildren: false });
+    if (this._visibleRange) copy.setVisibleRange(...this._visibleRange);
     this._carryVisualSizeTo(copy);
     return copy;
   }
