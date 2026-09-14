@@ -49,6 +49,8 @@ export interface SemanticTextRun {
     weight: string | number;
     style: string;
     lineHeight: number;
+    /** Outline fonts describe glyph ink; canvas text describes its line box. */
+    bounds?: 'ink';
     letterSpacing: number;
   };
   color: string;

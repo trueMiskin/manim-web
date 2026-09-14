@@ -673,7 +673,7 @@ describe('Text', () => {
         // Use a unique URL so the per-URL cache in Text.ts does not return
         // a stale entry from an earlier test run.
         const url = `http://example.com/font-${Date.now()}-${Math.random()}.ttf`;
-        const t = new Text({ text: 'Hi', fontUrl: url });
+        const t = new Text({ text: 'Hi', fontUrl: url, fontWeight: 'bold', fontStyle: 'italic' });
         // loadGlyphs constructs a TextGlyphGroup which fetches the font and
         // hands the bytes to opentype.parse. Our fetch stub returns an empty
         // buffer, so opentype.parse rejects — attach `.catch` eagerly so the
@@ -690,7 +690,7 @@ describe('Text', () => {
         expect(calls.indexOf('fonts.add')).toBeGreaterThan(calls.indexOf('face.load'));
         const loadCallIdx = calls.findIndex((c) => c.startsWith('fonts.load:'));
         expect(loadCallIdx).toBeGreaterThan(calls.indexOf('fonts.add'));
-        expect(fakeFonts.load).toHaveBeenCalledWith(expect.stringMatching(/^1em '/));
+        expect(fakeFonts.load).toHaveBeenCalledWith(expect.stringMatching(/^italic bold 1em '/));
       } finally {
         g.FontFace = origFontFace;
         g.document.fonts = origFonts;

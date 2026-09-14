@@ -62,6 +62,9 @@ export interface MobjectState {
   /** Visible point count (null means all) */
   visiblePointCount?: number | null;
 
+  /** Effective compound contour boundaries, including temporary transform alignment. */
+  subpathLengths?: number[];
+
   /** Recursively captured child states */
   children: MobjectState[];
 
@@ -120,6 +123,7 @@ export function serializeMobject(mob: Mobject, recursive = true): MobjectState {
     state.points2D = mob.points.map((p) => ({ x: p.x, y: p.y }));
     state.points3D = mob.getLocalPoints().map((p) => [...p]);
     state.visiblePointCount = mob.getVisiblePointCount();
+    state.subpathLengths = mob.getEffectiveSubpathLengths();
   }
 
   // Recursively capture children
@@ -165,16 +169,7 @@ export function deserializeMobject(mob: Mobject, state: MobjectState): void {
 
   // VMobject-specific
   if (mob instanceof VMobject && !(mob instanceof VGroup)) {
-    if (state.points3D && state.points3D.length > 0) {
-      mob.setPoints(state.points3D);
-    } else if (state.points2D && state.points2D.length > 0) {
-      mob.setPoints(state.points2D);
-    } else if (state.points3D || state.points2D) {
-      mob.setPoints([]);
-    }
-    if (state.visiblePointCount !== undefined) {
-      mob.setVisiblePointCount(state.visiblePointCount);
-    }
+    restoreGeometry(mob, state);
   }
 
   if (state.custom) mob.restoreCapturedState(structuredClone(state.custom));
@@ -187,6 +182,34 @@ export function deserializeMobject(mob: Mobject, state: MobjectState): void {
 
   // Mark dirty so Three.js syncs
   mob._markDirty();
+}
+
+function equalNumbers(a: readonly number[] | undefined, b: readonly number[] | undefined): boolean {
+  return (
+    a === b || (a?.length === b?.length && !!a && a.every((value, i) => Object.is(value, b?.[i])))
+  );
+}
+
+/** Unchanged points and path topology need no renderer geometry invalidation. */
+function restoreGeometry(mob: VMobject, state: MobjectState): void {
+  const points = state.points3D?.length
+    ? state.points3D
+    : (state.points2D?.map(({ x, y }) => [x, y, 0]) ?? state.points3D);
+  if (points) {
+    const current = mob.getLocalPoints();
+    if (
+      current.length !== points.length ||
+      current.some((point, i) => !equalNumbers(point, points[i]))
+    )
+      mob.setPoints(points);
+  }
+  if (
+    state.visiblePointCount !== undefined &&
+    mob.getVisiblePointCount() !== state.visiblePointCount
+  )
+    mob.setVisiblePointCount(state.visiblePointCount);
+  if (!equalNumbers(mob.getEffectiveSubpathLengths(), state.subpathLengths))
+    mob.setTransformSubpathLengths(state.subpathLengths);
 }
 
 /**

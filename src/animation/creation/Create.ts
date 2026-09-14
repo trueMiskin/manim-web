@@ -637,6 +637,7 @@ export class Write extends Animation {
    */
   private _beginGlyphStroke(): void {
     const glyphGroup = this._glyphGroup!;
+    const textThreeObj = this.mobject.getThreeObject();
 
     // Hide the Text's texture mesh
     if (
@@ -650,11 +651,13 @@ export class Write extends Animation {
     }
 
     // Attach glyph group's Three.js object to the Text's Three.js parent
-    const textThreeObj = this.mobject.getThreeObject();
     this._parentThreeObj = textThreeObj;
     const glyphThreeObj = glyphGroup.getThreeObject();
 
-    // Center the glyph group to match the centered canvas texture.
+    // Center from the same unshifted frame on every replay. The cached Three
+    // group retains the preceding animation's local centering after detachment.
+    glyphThreeObj.position.copy(glyphGroup.position);
+    glyphThreeObj.updateMatrixWorld(true);
     // Compute bounding box BEFORE adding to parent so it's in local space.
     const glyphBounds = new THREE.Box3().setFromObject(glyphThreeObj);
     if (!glyphBounds.isEmpty()) {
@@ -959,6 +962,18 @@ export class Write extends Animation {
       this.mobject.setStrokeOpacity(this._originalOpacity);
     }
     super.finish();
+  }
+
+  /** Discard temporary outlines when a partial write is abandoned or rewound. */
+  override reset(): void {
+    if (this._glyphGroup) this._finishGlyphStroke();
+    for (const [object, width] of this._vectorWidths) {
+      object.strokeWidth = width;
+      object._markDirty();
+    }
+    this._vectorWidths = [];
+    this._vectorWrite = null;
+    super.reset();
   }
 
   /**

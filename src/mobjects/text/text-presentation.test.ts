@@ -37,6 +37,21 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('presentation text', () => {
+  // MIGRATION: setStyle updates rendered and semantic color and invalidates cached
+  // glyphs, including after initial material synchronization.
+  it('synchronizes setStyle text color with its canvas and glyph readiness', async () => {
+    const text = new Text({ text: 'Style', fontUrl: '/font.ttf' });
+    text.getThreeObject();
+    await text.loadGlyphs();
+    expect(text.getGlyphGroup()).not.toBeNull();
+    text.setStyle({ strokeColor: '#ff0000' });
+    const runs = text.getSemanticTextRuns();
+    expect(runs[0].color).toBe('#ff0000');
+    const context = document.createElement('canvas').getContext('2d');
+    expect(context?.fillStyle).toBe('#ff0000');
+    expect(text.getGlyphGroup()).toBeNull();
+  });
+
   // MIGRATION: replacement targets retain their rendered bounds after readiness,
   // for every pair of source/target text lengths and font sizes.
   it('preserves replacement text dimensions when ready geometry is rebuilt', async () => {

@@ -45,8 +45,8 @@ export interface GlyphVMobjectOptions {
  * control point format that VMobject expects:
  *   [anchor1, handle1, handle2, anchor2, handle3, handle4, anchor3, ...]
  *
- * Multi-contour glyphs (e.g., "o", "B", "i") produce multiple sub-paths
- * joined by degenerate zero-length segments.
+ * Multi-contour glyphs (e.g., "o", "B", "i") retain explicit sub-paths so
+ * fills preserve holes and strokes never connect separate contours.
  */
 export class GlyphVMobject extends VMobject {
   private _glyph: Glyph;
@@ -80,7 +80,20 @@ export class GlyphVMobject extends VMobject {
     this._style.fillOpacity = 0;
 
     const points3D = this._buildPoints(options.glyph, options.font, options.fontSize, xOff, yOff);
-    this._outlinePoints = points3D;
+    // Skeletonization consumes a continuous outline; rendering keeps contours separate.
+    let offset = 0;
+    for (const length of this.getSubpathLengths() ?? [points3D.length]) {
+      const contour = points3D.slice(offset, offset + length);
+      offset += length;
+      if (this._outlinePoints.length && contour.length) {
+        this._outlinePoints.push(
+          [...this._outlinePoints[this._outlinePoints.length - 1]],
+          [...contour[0]],
+          [...contour[0]],
+        );
+        this._outlinePoints.push(...contour.slice(1));
+      } else this._outlinePoints.push(...contour);
+    }
 
     if (points3D.length > 0) {
       this.setPoints3D(points3D);
@@ -88,7 +101,7 @@ export class GlyphVMobject extends VMobject {
 
     // Eagerly compute skeleton if requested
     if (this._useSkeletonStroke && points3D.length > 0) {
-      this._skeletonPath = skeletonizeGlyph(points3D, this._skeletonOptions);
+      this._skeletonPath = skeletonizeGlyph(this._outlinePoints, this._skeletonOptions);
     }
   }
 
@@ -114,22 +127,15 @@ export class GlyphVMobject extends VMobject {
     let contourStartX = 0;
     let contourStartY = 0;
     let contourStarted = false;
+    let contourOffset = 0;
+    const contourLengths: number[] = [];
 
     for (const cmd of cmds) {
       switch (cmd.type) {
         case 'M': {
-          // If we had a previous contour, connect with a degenerate segment
-          if (contourStarted && allPoints.length > 0) {
-            // Add degenerate zero-length cubic to connect contours
-            const lastPt = allPoints[allPoints.length - 1];
-            const newPt = [cmd.x * PIXEL_TO_WORLD, -cmd.y * PIXEL_TO_WORLD, 0];
-            allPoints.push([...lastPt]); // handle1 = previous anchor
-            allPoints.push([...newPt]); // handle2 = new anchor
-            allPoints.push([...newPt]); // anchor2 = new start
-          } else {
-            // First contour: set the start anchor
-            allPoints.push([cmd.x * PIXEL_TO_WORLD, -cmd.y * PIXEL_TO_WORLD, 0]);
-          }
+          if (contourStarted) contourLengths.push(allPoints.length - contourOffset);
+          contourOffset = allPoints.length;
+          allPoints.push([cmd.x * PIXEL_TO_WORLD, -cmd.y * PIXEL_TO_WORLD, 0]);
           currentX = cmd.x;
           currentY = cmd.y;
           contourStartX = cmd.x;
@@ -208,6 +214,8 @@ export class GlyphVMobject extends VMobject {
       }
     }
 
+    if (contourStarted) contourLengths.push(allPoints.length - contourOffset);
+    this.setBaseSubpathLengths(contourLengths);
     return allPoints;
   }
 
