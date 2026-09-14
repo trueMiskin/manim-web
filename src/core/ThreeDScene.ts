@@ -4,6 +4,7 @@ import { Camera3D } from './Camera';
 import { Lighting } from './Lighting';
 import { OrbitControls, OrbitControlsOptions } from '../interaction/OrbitControls';
 import { Mobject, Vector3Tuple } from './Mobject';
+import { setSceneComposition } from './SceneComposition';
 
 /**
  * Create a configured 3D camera with initial orientation.
@@ -115,6 +116,7 @@ export class ThreeDScene extends Scene {
    */
   constructor(container: HTMLElement | null, options: ThreeDSceneOptions = {}) {
     super(container, options);
+    setSceneComposition(this.threeScene, '3d');
 
     const {
       fov = 45,

@@ -1,12 +1,13 @@
 import * as THREE from 'three';
 import { IRenderer } from './Renderer';
+import { prepareSceneComposition } from './SceneComposition';
 
 /**
  * No-op renderer for headless mode.
  * Drop-in replacement for Renderer that performs no actual rendering.
  * Used when Scene is created with { headless: true } or via Scene.createHeadless().
  *
- * - render() and dispose() are no-ops; resize() updates in-memory dimensions
+ * - render() prepares composition without drawing; resize() updates dimensions
  * - getCanvas() and getThreeRenderer() throw with descriptive errors
  * - Width, height, colors are stored in memory for scene logic
  */
@@ -56,8 +57,8 @@ export class NullRenderer implements IRenderer {
     this._backgroundOpacity = Math.max(0, Math.min(1, value));
   }
 
-  render(_scene: THREE.Scene, _camera: THREE.Camera): void {
-    /* no-op */
+  render(scene: THREE.Scene, _camera: THREE.Camera): void {
+    prepareSceneComposition(scene);
   }
   resize(width: number, height: number): void {
     this._width = width;

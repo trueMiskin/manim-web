@@ -13,6 +13,7 @@ import { AudioManager, type AddSoundOptions, type AudioTrack } from './AudioMana
 import { ensureAnimateProxyRegistered } from './AnimateProxy';
 import type { MultiCamera } from './CameraExtensions';
 import { logger } from '../utils/logger';
+import { prepareSceneComposition, setSceneComposition } from './SceneComposition';
 
 // AnimateProxy self-registers with Mobject via a top-level side effect
 // (see AnimateProxy.ts) to avoid the Mobject -> AnimateProxy -> Transform ->
@@ -173,6 +174,7 @@ export class Scene {
 
     // Create Three.js scene
     this._threeScene = new THREE.Scene();
+    setSceneComposition(this._threeScene, '2d');
 
     // Create renderer
     if (headless) {
@@ -1018,6 +1020,7 @@ export class Scene {
     // Skip if the WebGL context is gone — Renderer.render() guards this for
     // the default path, so we mirror that behavior here.
     if (threeRenderer.getContext().isContextLost()) return;
+    prepareSceneComposition(this._threeScene);
 
     const width = this._renderer.width;
     const height = this._renderer.height;
