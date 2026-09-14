@@ -403,7 +403,7 @@ export class ZoomedScene extends Scene {
         // Render to zoom render target using dedicated camera
         webglRenderer.setRenderTarget(this._zoomRenderTarget);
         webglRenderer.clear();
-        webglRenderer.render(this.threeScene, this._zoomCamera);
+        this.renderer.render(this.threeScene, this._zoomCamera);
         webglRenderer.setRenderTarget(null);
 
         // Restore viewport to full canvas size

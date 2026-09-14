@@ -1,6 +1,9 @@
 import { Arc } from './Arc';
 import { Vector3Tuple } from '../../core/Mobject';
 import { BLUE, DEFAULT_STROKE_WIDTH } from '../../constants';
+import { addVec, crossVec, lengthVec, scaleVec, subVec } from '../../utils/vectors';
+
+const STRAIGHT_ANGLE = 1e-10;
 
 /**
  * Options for creating an ArcBetweenPoints
@@ -10,7 +13,7 @@ export interface ArcBetweenPointsOptions {
   start: Vector3Tuple;
   /** End point of the arc */
   end: Vector3Tuple;
-  /** Arc angle in radians. Default: PI/2 */
+  /** Arc angle in radians. Zero produces a straight segment. Default: PI/2 */
   angle?: number;
   /** Stroke color as CSS color string. Default: Manim's blue (#58C4DD) */
   color?: string;
@@ -69,6 +72,24 @@ export class ArcBetweenPoints extends Arc {
 
     this._startPoint = [...start];
     this._endPoint = [...end];
+
+    // A zero sweep is the straight-line limit, not a zero-radius point.
+    // Pin the anchors even for curved arcs to avoid cancellation when their
+    // center lies far away compared with the length of the chord.
+    const points = this.getLocalPoints();
+    if (Math.abs(angle) < STRAIGHT_ANGLE) {
+      const chord = subVec(end, start);
+      this.setPoints([
+        start,
+        addVec(start, scaleVec(1 / 3, chord)),
+        addVec(start, scaleVec(2 / 3, chord)),
+        end,
+      ]);
+    } else {
+      points[0] = [...start];
+      points[points.length - 1] = [...end];
+      this.setPoints(points);
+    }
   }
 
   /**
@@ -79,6 +100,9 @@ export class ArcBetweenPoints extends Arc {
    * 2. The arc from start to end subtends the given angle
    *
    * The center lies on the perpendicular bisector of the chord between the points.
+   * Like Arc, this calculation describes a circle parallel to the XY plane.
+   * @pre start[2] === end[2]
+   * @pre Math.abs(angle) < 2 * Math.PI
    */
   private static _calculateArcParams(
     start: Vector3Tuple,
@@ -86,12 +110,8 @@ export class ArcBetweenPoints extends Arc {
     angle: number,
   ): { center: Vector3Tuple; radius: number; startAngle: number } {
     // Handle degenerate case where angle is very small
-    if (Math.abs(angle) < 1e-10) {
-      const midpoint: Vector3Tuple = [
-        (start[0] + end[0]) / 2,
-        (start[1] + end[1]) / 2,
-        (start[2] + end[2]) / 2,
-      ];
+    if (Math.abs(angle) < STRAIGHT_ANGLE) {
+      const midpoint = scaleVec(0.5, addVec(start, end));
       return {
         center: midpoint,
         radius: 0,
@@ -100,16 +120,13 @@ export class ArcBetweenPoints extends Arc {
     }
 
     // Midpoint of the chord
-    const midX = (start[0] + end[0]) / 2;
-    const midY = (start[1] + end[1]) / 2;
-    const midZ = (start[2] + end[2]) / 2;
+    const midpoint = scaleVec(0.5, addVec(start, end));
 
     // Chord vector
-    const chordX = end[0] - start[0];
-    const chordY = end[1] - start[1];
+    const chord = subVec(end, start);
 
     // Half chord length
-    const halfChord = Math.sqrt(chordX * chordX + chordY * chordY) / 2;
+    const halfChord = lengthVec(chord) / 2;
 
     // Handle degenerate case where points are the same
     if (halfChord < 1e-10) {
@@ -131,27 +148,32 @@ export class ArcBetweenPoints extends Arc {
     const distToCenter = radius * Math.cos(halfAngle);
 
     // Perpendicular direction to the chord (normalized)
-    const chordLength = 2 * halfChord;
-    let perpX = -chordY / chordLength;
-    let perpY = chordX / chordLength;
-
-    // Determine which side of the chord the center should be
-    // For positive angles, center is to the left of the chord direction
-    // For negative angles, center is to the right
-    if (angle > 0) {
-      perpX = -perpX;
-      perpY = -perpY;
-    }
+    // Positive sweeps put the center to the left of the directed chord;
+    // reversing the sign reflects the arc across the chord.
+    const perpendicular = scaleVec(Math.sign(angle) / (2 * halfChord), crossVec([0, 0, 1], chord));
 
     // Calculate center position
-    const centerX = midX + distToCenter * perpX;
-    const centerY = midY + distToCenter * perpY;
-    const center: Vector3Tuple = [centerX, centerY, midZ];
+    const center = addVec(midpoint, scaleVec(distToCenter, perpendicular));
 
     // Calculate start angle (angle from center to start point)
-    const startAngle = Math.atan2(start[1] - centerY, start[0] - centerX);
+    const startAngle = Math.atan2(start[1] - center[1], start[0] - center[0]);
 
     return { center, radius, startAngle };
+  }
+
+  /** Point along the circular arc, or the straight-line limit for a zero sweep. */
+  override pointFromProportion(alpha: number): Vector3Tuple {
+    if (Math.abs(this._angle) < STRAIGHT_ANGLE) {
+      return addVec(this._startPoint, scaleVec(alpha, subVec(this._endPoint, this._startPoint)));
+    }
+    return super.pointFromProportion(alpha);
+  }
+
+  /** Arc length, including the straight-line limit for a zero sweep. */
+  override getArcLength(): number {
+    return Math.abs(this._angle) < STRAIGHT_ANGLE
+      ? lengthVec(subVec(this._endPoint, this._startPoint))
+      : super.getArcLength();
   }
 
   /**

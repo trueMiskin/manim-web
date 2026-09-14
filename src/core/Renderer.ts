@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { logger } from '../utils/logger';
+import { prepareSceneComposition } from './SceneComposition';
 
 /**
  * Options for configuring the Renderer.
@@ -188,6 +189,7 @@ export class Renderer implements IRenderer {
    */
   render(scene: THREE.Scene, camera: THREE.Camera): void {
     if (this._contextLost) return;
+    prepareSceneComposition(scene);
     this._renderer.render(scene, camera);
   }
 
