@@ -8,6 +8,8 @@ import { GrowFromCenter } from '../animation/growing';
 import { ValueTracker } from '../mobjects/value-tracker/ValueTracker';
 import { TracedPath } from '../animation/changing';
 import { ThreeDScene } from '../core/ThreeDScene';
+import { Create } from '../animation/creation/Create';
+import { LineMaterial } from 'three/examples/jsm/lines/LineMaterial.js';
 
 function player() {
   return new Player(document.createElement('div'), {
@@ -19,6 +21,24 @@ function player() {
 }
 
 describe('compiled scene checkpoints', () => {
+  // MIGRATION: leaving any partially drawn interval restores the destination's complete stroke.
+  it('restores stroke material state after an interrupted Create', async () => {
+    const p = player();
+    const square = new Square().setFillOpacity(0.3);
+    await p.sequence(async (scene) => {
+      await scene.step({ id: 'draw' }, () => scene.play(new Create(square)));
+      await scene.step({ id: 'move' }, () => scene.play(square.animate.shift([2, 0, 0])));
+    });
+    p.seek(0.2);
+    p.seekCheckpoint('move');
+    square.getThreeObject().traverse((object) => {
+      const material = (object as { material?: unknown }).material;
+      if (material instanceof LineMaterial) expect(material.dashed).toBe(false);
+    });
+    expect(square.fillOpacity).toBe(0.3);
+    p.dispose();
+  });
+
   // MIGRATION: sequential authored state equals direct seek for every checkpoint and seek history.
   it('restores grow, independent fill/stroke, membership, and changed child topology', async () => {
     const p = player();
