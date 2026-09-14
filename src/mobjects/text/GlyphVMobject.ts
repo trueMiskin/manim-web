@@ -88,7 +88,20 @@ export class GlyphVMobject extends VMobject {
       xOff,
       yOff,
     );
-    this._outlinePoints = points3D;
+    // Skeletonization consumes a continuous outline; rendering keeps contours separate.
+    let offset = 0;
+    for (const length of subpathLengths.length > 0 ? subpathLengths : [points3D.length]) {
+      const contour = points3D.slice(offset, offset + length);
+      offset += length;
+      if (this._outlinePoints.length && contour.length) {
+        this._outlinePoints.push(
+          [...this._outlinePoints[this._outlinePoints.length - 1]],
+          [...contour[0]],
+          [...contour[0]],
+        );
+        this._outlinePoints.push(...contour.slice(1));
+      } else this._outlinePoints.push(...contour);
+    }
 
     if (points3D.length > 0) {
       this.setPoints3D(points3D);
@@ -102,7 +115,7 @@ export class GlyphVMobject extends VMobject {
 
     // Eagerly compute skeleton if requested
     if (this._useSkeletonStroke && points3D.length > 0) {
-      this._skeletonPath = skeletonizeGlyph(points3D, this._skeletonOptions);
+      this._skeletonPath = skeletonizeGlyph(this._outlinePoints, this._skeletonOptions);
     }
   }
 

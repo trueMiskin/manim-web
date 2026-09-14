@@ -29,6 +29,8 @@ export interface TextGlyphGroupOptions {
   useSkeletonStroke?: boolean;
   /** Options forwarded to the skeletonization algorithm. */
   skeletonOptions?: SkeletonizeOptions;
+  /** Fail when the font lacks a requested glyph instead of skipping it. */
+  strictGlyphs?: boolean;
 }
 
 /**
@@ -47,6 +49,8 @@ export class TextGlyphGroup extends VGroup {
   private _useSkeletonStroke: boolean;
   private _skeletonOptions: SkeletonizeOptions;
   private _readyPromise: Promise<void>;
+  private _strictGlyphs: boolean;
+  private _glyphRanges: { glyph: GlyphVMobject; start: number; end: number }[] = [];
 
   constructor(options: TextGlyphGroupOptions) {
     super();
@@ -58,6 +62,7 @@ export class TextGlyphGroup extends VGroup {
     this._glyphStrokeWidth = options.strokeWidth ?? 2;
     this._useSkeletonStroke = options.useSkeletonStroke ?? false;
     this._skeletonOptions = options.skeletonOptions ?? {};
+    this._strictGlyphs = options.strictGlyphs ?? false;
 
     // VGroup defaults
     this.fillOpacity = 0;
@@ -72,6 +77,11 @@ export class TextGlyphGroup extends VGroup {
    */
   async waitForReady(): Promise<void> {
     return this._readyPromise;
+  }
+
+  /** Logical source ranges, including skipped spaces, for semantic part assignment. */
+  getGlyphRanges(): readonly { glyph: GlyphVMobject; start: number; end: number }[] {
+    return this._glyphRanges;
   }
 
   /**
@@ -91,8 +101,12 @@ export class TextGlyphGroup extends VGroup {
     const scale = this._fontSize / font.unitsPerEm;
     let xCursor = 0; // in pixels
 
-    for (let i = 0; i < this._text.length; i++) {
-      const char = this._text[i];
+    const characters = Array.from(this._text);
+    let offset = 0;
+    for (let i = 0; i < characters.length; i++) {
+      const char = characters[i];
+      const start = offset;
+      offset += char.length;
 
       // Skip spaces — no visible glyph, but advance the cursor
       if (char === ' ') {
@@ -103,6 +117,8 @@ export class TextGlyphGroup extends VGroup {
 
       const glyph = font.charToGlyph(char);
       if (!glyph || glyph.index === 0) {
+        if (this._strictGlyphs)
+          throw new Error(`Font ${this._fontUrl} has no glyph for ${JSON.stringify(char)}`);
         // Missing glyph — skip but advance
         xCursor += (glyph?.advanceWidth ?? this._fontSize * 0.5) * scale;
         continue;
@@ -110,7 +126,7 @@ export class TextGlyphGroup extends VGroup {
 
       // Apply kerning with previous character
       if (i > 0) {
-        const prevGlyph = font.charToGlyph(this._text[i - 1]);
+        const prevGlyph = font.charToGlyph(characters[i - 1]);
         const kerning = font.getKerningValue(prevGlyph, glyph);
         xCursor += kerning * scale;
       }
@@ -128,6 +144,7 @@ export class TextGlyphGroup extends VGroup {
       });
 
       this.add(glyphVMob);
+      this._glyphRanges.push({ glyph: glyphVMob, start, end: offset });
 
       // Advance cursor by glyph's advance width
       xCursor += (glyph.advanceWidth ?? 0) * scale;

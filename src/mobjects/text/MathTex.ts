@@ -63,7 +63,6 @@ export class MathTex extends VGroup {
   protected _latex: string;
   protected _fontSize: number;
   protected _displayMode: boolean;
-  protected _color: string;
   protected _svgStrokeWidth: number;
   protected _svgFillOpacity: number;
   protected _targetHeight: number | undefined;
@@ -108,7 +107,7 @@ export class MathTex extends VGroup {
 
     this._fontSize = fontSize;
     this._displayMode = displayMode;
-    this._color = color;
+    this.setColor(color);
     this._svgStrokeWidth = strokeWidth;
     this.strokeWidth = strokeWidth;
     this._svgFillOpacity = fillOpacity;
@@ -300,29 +299,7 @@ export class MathTex extends VGroup {
    * Override setColor to propagate to all VMobject children (fill + stroke).
    */
   override setColor(color: string): this {
-    this._color = color;
-    if (this._isMultiPart) {
-      for (const part of this._parts) {
-        part.setColor(color);
-      }
-    } else {
-      // Propagate to all VMobject children (the glyph paths)
-      for (const child of this.children) {
-        if (child instanceof VMobject) {
-          child.setColor(color);
-        }
-        // Handle nested VGroups from svgToVMobjects
-        if (child instanceof VGroup) {
-          for (const grandchild of child.children) {
-            if (grandchild instanceof VMobject) {
-              grandchild.setColor(color);
-            }
-          }
-        }
-      }
-    }
-    this._markDirty();
-    return this;
+    return super.setColor(color);
   }
 
   /**
@@ -605,7 +582,7 @@ export class MathTex extends VGroup {
       const partGroup = new MathTex._PartGroup();
       partGroup._latex = latexParts[i];
       partGroup._matchingKey = this._matchingKeys[i];
-      partGroup._color = this._color;
+      partGroup.setColor(this._color);
 
       const count = partGlyphCounts[i];
       for (let j = 0; j < count && glyphIdx < allGlyphs.length; j++) {
@@ -641,23 +618,19 @@ export class MathTex extends VGroup {
    * Lightweight VGroup used as a part container in multi-part mode.
    * Supports setColor() for per-part coloring.
    */
+  protected _createPart(latex: string, key: string): VGroup & { _latex: string } {
+    const part = new MathTex._PartGroup();
+    part._latex = latex;
+    part._matchingKey = key;
+    part.setColor(this._color);
+    return part;
+  }
+
   private static _PartGroup = class extends VGroup {
     _latex: string = '';
-    _color: string = WHITE;
     _matchingKey: string = '';
     constructor() {
       super();
-    }
-
-    override setColor(color: string): this {
-      this._color = color;
-      for (const child of this.children) {
-        if (child instanceof VMobject) {
-          child.setColor(color);
-        }
-      }
-      this._markDirty();
-      return this;
     }
 
     getLatex(): string {
@@ -700,7 +673,14 @@ export class MathTex extends VGroup {
       ? copy.children.filter(isMathTexPart)
       : [];
     if (this.children.length === 0 && this._renderPromise) {
+      const pendingScale = this.scaleVector.clone();
       copy._renderPromise = this.waitForRender().then(() => {
+        // Source readiness baked its pending scale into the copied geometry.
+        copy.scaleVector.set(
+          copy.scaleVector.x / (pendingScale.x || 1),
+          copy.scaleVector.y / (pendingScale.y || 1),
+          copy.scaleVector.z / (pendingScale.z || 1),
+        );
         for (const child of this.children) copy.add(child.copy());
         copy._parts = this._isMultiPart
           ? copy.children.filter(isMathTexPart)

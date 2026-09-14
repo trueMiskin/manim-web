@@ -19,7 +19,7 @@ import {
   projectToPlane,
   signedArea2DFromStride,
 } from '../utils/math';
-import { crossVec, lengthVec } from '../utils/vectors';
+import { crossVec, lengthVec, subVec } from '../utils/vectors';
 import type { Point } from './VMobjectCurves';
 
 /**
@@ -199,21 +199,29 @@ function sampleBezierOutline3D(points: number[][], samplesPerSegment: number): n
     }
   }
 
-  // Remove closing duplicate
-  if (result.length > 1) {
-    const first = result[0];
-    const last = result[result.length - 1];
-    const dx = first[0] - last[0];
-    const dy = first[1] - last[1];
-    const dz = (first[2] ?? 0) - (last[2] ?? 0);
-    if (dx * dx + dy * dy + dz * dz < 1e-8) {
-      result.pop();
-    }
-  }
+  return removeDuplicateOutlineVertices(result);
+}
 
-  // Keep sampling deterministic and high-fidelity for fill triangulation.
-  // Unlike stroke/path preview code, fill quality is sensitive to undersampling,
-  // especially for compound glyphs with holes (e.g. MathTex "0", "8").
+/**
+ * Remove coincident samples before earcut bridges compound contours.
+ * Zero-length font segments can produce tiny roundoff loops when evaluated
+ * after translation/scaling; earcut can otherwise bridge across a glyph hole.
+ * This tolerance only covers arithmetic precision, preserving curved samples
+ * and leaving the control points used by transforms and strokes unchanged.
+ */
+function removeDuplicateOutlineVertices(points: number[][]): number[][] {
+  let coordinateScale = 0;
+  for (const point of points)
+    for (const coordinate of point)
+      coordinateScale = Math.max(coordinateScale, Math.abs(coordinate));
+  const tolerance = coordinateScale * Number.EPSILON * 16;
+  const coincident = (a: number[], b: number[]): boolean =>
+    lengthVec(subVec([a[0], a[1], a[2] ?? 0], [b[0], b[1], b[2] ?? 0])) <= tolerance;
+  const result: number[][] = [];
+  for (const point of points) {
+    if (!result.length || !coincident(point, result[result.length - 1])) result.push(point);
+  }
+  if (result.length > 1 && coincident(result[0], result[result.length - 1])) result.pop();
   return result;
 }
 

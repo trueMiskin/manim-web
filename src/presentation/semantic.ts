@@ -73,6 +73,38 @@ export function inspectSceneText(scene: Scene): ProjectedTextRun[] {
   return result;
 }
 
+function semanticFontLayout(run: ProjectedTextRun, context: CanvasRenderingContext2D | null) {
+  let fontSize = ((run.height / run.font.lineHeight) * 4) / 3;
+  const fontDeclaration = (size: number) =>
+    `${run.font.style} ${run.font.weight} ${size}px ${run.font.family}`;
+  const hasInkBounds = run.font.bounds === 'ink' && Boolean(run.text.trim());
+  if (context && hasInkBounds) {
+    context.font = fontDeclaration(100);
+    const metrics = context.measureText(run.text);
+    const inkHeight = metrics.actualBoundingBoxAscent + metrics.actualBoundingBoxDescent;
+    if (inkHeight > 0) fontSize = (run.height * 100) / inkHeight;
+  }
+  const font = fontDeclaration(fontSize);
+  if (context) context.font = font;
+  const metrics = context?.measureText(run.text);
+  const ink = hasInkBounds ? metrics : undefined;
+  const naturalWidth =
+    (ink && metrics
+      ? metrics.actualBoundingBoxLeft + metrics.actualBoundingBoxRight
+      : (metrics?.width ?? run.width)) +
+    Math.max(0, Array.from(run.text).length - 1) * run.font.letterSpacing;
+  const horizontalScale = naturalWidth > 0 ? run.width / naturalWidth : 1;
+  // Canvas exposes the same font baseline metrics used by CSS inline layout.
+  const bearing = ink && metrics ? metrics.actualBoundingBoxLeft * horizontalScale : 0;
+  const baseline =
+    ink && metrics && Number.isFinite(metrics.fontBoundingBoxAscent)
+      ? metrics.actualBoundingBoxAscent -
+        (run.height - metrics.fontBoundingBoxAscent - metrics.fontBoundingBoxDescent) / 2 -
+        metrics.fontBoundingBoxAscent
+      : 0;
+  return { font, horizontalScale, bearing, baseline };
+}
+
 /** Build selectable HTML from the same runs used for capture. Math retains LaTeX semantics. */
 export function appendSemanticText(
   container: HTMLElement,
@@ -85,14 +117,8 @@ export function appendSemanticText(
     element.dataset.semanticId = run.id;
     element.dataset.kind = run.kind;
     element.textContent = run.text;
-    const fontSize = ((run.height / run.font.lineHeight) * 4) / 3;
-    const font = `${run.font.style} ${run.font.weight} ${fontSize}px ${run.font.family}`;
-    if (context) context.font = font;
-    const naturalWidth =
-      (context?.measureText(run.text).width ?? run.width) +
-      Math.max(0, Array.from(run.text).length - 1) * run.font.letterSpacing;
+    const { font, horizontalScale, bearing, baseline } = semanticFontLayout(run, context);
     const [a, b, c, d, e, f] = run.transform;
-    const horizontalScale = naturalWidth > 0 ? run.width / naturalWidth : 1;
     Object.assign(element.style, {
       position: 'absolute',
       left: '0',
@@ -102,7 +128,7 @@ export function appendSemanticText(
       lineHeight: `${run.height}px`,
       letterSpacing: `${run.font.letterSpacing}px`,
       transformOrigin: '0 0',
-      transform: `matrix(${a * horizontalScale},${b * horizontalScale},${c},${d},${e},${f})`,
+      transform: `matrix(${a * horizontalScale},${b * horizontalScale},${c},${d},${e + a * bearing + c * baseline},${f + b * bearing + d * baseline})`,
       color: options.selectableOnly || run.kind === 'math' ? 'transparent' : run.color,
       opacity: `${run.opacity}`,
       userSelect: 'text',

@@ -748,6 +748,9 @@ export class VMobject extends VMobjectRendering {
     options?: { copyChildren?: boolean; copyPosition?: boolean },
   ): void {
     super._copyBaseAttributesInto(clone, options);
+    clone._baseSubpathLengths = this._baseSubpathLengths
+      ? [...this._baseSubpathLengths]
+      : undefined;
     clone._points3D = this._points3D.map((p) => [...p]);
     clone._visiblePointCount = this._visiblePointCount;
     if (this._transformSubpathLengths !== undefined) {
