@@ -111,7 +111,8 @@ export function presentationStyles(definition: PresentationDefinition): HTMLStyl
     .manim-live canvas { position:absolute; inset:0; width:100%; height:100%; }
     .manim-selection { z-index:2; pointer-events:none; }
     .manim-selection > * { pointer-events:auto; }
-    .manim-live + .manim-poster, .manim-slide[data-live="true"] > .manim-poster { visibility:hidden; }
+    .manim-live + .manim-poster, .manim-slide[data-live="true"] > .manim-poster,
+    .manim-slide[data-preparing="true"] > .manim-poster { visibility:hidden; }
     .manim-static-content { box-sizing:border-box; width:100%; height:100%; padding:5%; display:flex; flex-direction:column; justify-content:center; align-items:center; }
     .manim-static-content > img, .manim-static-content > video { max-width:100%; max-height:90%; min-height:0; }
     .manim-static-content figcaption { margin-top:1em; font-size:0.6em; }

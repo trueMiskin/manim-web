@@ -271,11 +271,14 @@ export {
   type TextOptions,
   Paragraph,
   type ParagraphOptions,
+  RichParagraph,
+  type RichParagraphOptions,
   MarkupText,
   type MarkupTextOptions,
   // MathTex - SVG vector-based (default, like Python Manim)
   MathTex,
   type MathTexOptions,
+  type MathTexNamedPart,
   // MathTexSVG - deprecated alias for MathTex (backwards compat)
   MathTexSVG,
   type MathTexSVGOptions,

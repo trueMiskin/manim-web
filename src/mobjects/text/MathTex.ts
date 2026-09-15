@@ -20,14 +20,17 @@ import typia from 'typia';
 import { renderLatexToSVG } from './MathJaxRenderer';
 import { logger } from '../../utils/logger';
 import * as THREE from 'three';
-import { semanticOpacity, splitTexGroups, type SemanticTextRun } from './TextSemantics';
+import { semanticOpacity, type SemanticTextRun } from './TextSemantics';
+import { resolveMathTexParts, type MathTexNamedPart } from './MathTexNamedParts';
+
+export type { MathTexNamedPart } from './MathTexNamedParts';
 
 /** MathJax SVG uses ~1000 font units per em. */
 const MATHJAX_SVG_UNITS_PER_EM = 1000;
 
 export interface MathTexOptions {
-  /** LaTeX string or array of strings for multi-part expressions. */
-  latex: string | string[];
+  /** LaTeX string or semantic parts with optional stable keys and colors. */
+  latex: string | Array<string | MathTexNamedPart>;
   /** Color as CSS color string. Default: WHITE ('#ffffff') */
   color?: string;
   /** Scale factor (1 = standard math size). Default: 1 */
@@ -69,6 +72,7 @@ export class MathTex extends VGroup {
   protected _sourceLatex: string;
   protected _partLatex: string[];
   protected _matchingKeys: string[];
+  protected _partColors: Array<string | null>;
 
   constructor(options: MathTexOptions, render = true) {
     super();
@@ -76,12 +80,11 @@ export class MathTex extends VGroup {
     // Validate options via typia and read required latex field
     typia.assert<MathTexOptions>(options);
     const latex = options.latex;
-    this._sourceLatex = Array.isArray(latex) ? latex.join('') : latex;
-    this._partLatex = Array.isArray(latex) ? [...latex] : splitTexGroups(latex);
-    this._matchingKeys = options.matchingKeys ? [...options.matchingKeys] : [...this._partLatex];
-    if (this._matchingKeys.length !== this._partLatex.length) {
-      throw new Error('MathTex matchingKeys must contain one key per semantic part.');
-    }
+    const parts = resolveMathTexParts(latex, options.matchingKeys);
+    this._sourceLatex = parts.sourceLatex;
+    this._partLatex = parts.partLatex;
+    this._matchingKeys = parts.matchingKeys;
+    this._partColors = parts.partColors;
 
     const {
       color = WHITE,
@@ -151,6 +154,27 @@ export class MathTex extends VGroup {
   }
 
   /**
+   * Select a semantic part by its authored key after waitForRender().
+   * Legacy matchingKeys and unique literal parts also support this selector.
+   *
+   * @pre this._matchingKeys.filter(value => value === key).length === 1
+   * @pre !this._isMultiPart || this._parts.length === this._partLatex.length
+   * @post result === this.getMatchingParts()[this._matchingKeys.indexOf(key)]
+   */
+  part(key: string): VGroup {
+    const index = this._matchingKeys.indexOf(key);
+    if (index < 0) throw new Error(`Unknown MathTex part "${key}".`);
+    if (this._matchingKeys.lastIndexOf(key) !== index) {
+      throw new Error(`MathTex part "${key}" is ambiguous; assign unique named keys.`);
+    }
+    if (!this._isMultiPart) return this;
+    if (this._parts.length !== this._partLatex.length) {
+      throw new Error('MathTex parts are not ready; await waitForRender() before calling part().');
+    }
+    return this.getPart(index);
+  }
+
+  /**
    * Get the number of parts.
    */
   getPartCount(): number {
@@ -185,6 +209,8 @@ export class MathTex extends VGroup {
       sourceLatex: this._sourceLatex,
       partLatex: [...this._partLatex],
       matchingKeys: [...this._matchingKeys],
+      partColors: [...this._partColors],
+      isMultiPart: this._isMultiPart,
       fontSize: this._fontSize,
     };
   }
@@ -195,6 +221,11 @@ export class MathTex extends VGroup {
     if (typeof state.sourceLatex === 'string') this._sourceLatex = state.sourceLatex;
     if (Array.isArray(state.partLatex)) this._partLatex = state.partLatex.map(String);
     if (Array.isArray(state.matchingKeys)) this._matchingKeys = state.matchingKeys.map(String);
+    if (Array.isArray(state.partColors))
+      this._partColors = state.partColors.map((color) =>
+        typeof color === 'string' ? color : null,
+      );
+    if (typeof state.isMultiPart === 'boolean') this._isMultiPart = state.isMultiPart;
     if (typeof state.fontSize === 'number') this._fontSize = state.fontSize;
     if (this._isMultiPart)
       this._parts = this.children.filter((child): child is VGroup => child instanceof VGroup);
@@ -524,7 +555,7 @@ export class MathTex extends VGroup {
         partGroup.add(glyph);
       }
 
-      this._parts.push(partGroup as unknown as MathTex);
+      this._parts.push(partGroup);
       this.add(partGroup);
     }
 
@@ -535,6 +566,8 @@ export class MathTex extends VGroup {
       fullResult.vmobjectGroup.remove(glyph);
       lastPart.add(glyph);
     }
+
+    this._parts.forEach((part, index) => part.setColor(this._partColors[index] ?? this._color));
 
     // Scale and center the full expression
     this._scaleToTarget();
@@ -574,6 +607,16 @@ export class MathTex extends VGroup {
       return this._matchingKey;
     }
 
+    override captureState(): Record<string, unknown> {
+      return { ...super.captureState(), latex: this._latex, matchingKey: this._matchingKey };
+    }
+
+    override restoreCapturedState(state: Record<string, unknown>): void {
+      super.restoreCapturedState(state);
+      if (typeof state.latex === 'string') this._latex = state.latex;
+      if (typeof state.matchingKey === 'string') this._matchingKey = state.matchingKey;
+    }
+
     override copy(): VGroup {
       const copy = new MathTex._PartGroup();
       copy._latex = this._latex;
@@ -601,6 +644,7 @@ export class MathTex extends VGroup {
       false,
     );
     copy._sourceLatex = this._sourceLatex;
+    copy._partColors = [...this._partColors];
     this._copyBaseAttributesInto(copy, { copyChildren: true });
     copy._parts = this._isMultiPart
       ? copy.children.filter((child): child is VGroup => child instanceof VGroup)

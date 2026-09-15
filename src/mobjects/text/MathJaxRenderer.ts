@@ -371,7 +371,13 @@ export async function renderLatexToSVG(
       packages: ['base', 'ams', 'newcommand', 'configmacros'],
       ...(Object.keys(macros).length > 0 ? { macros } : {}),
     });
-    const svg = new SVG({ fontCache: 'none', fontData: mj.fontData });
+    // A mobject owns one complete SVG. MathJax 4 otherwise splits inline
+    // expressions at operators, so selecting the first SVG drops later terms.
+    const svg = new SVG({
+      fontCache: 'none',
+      fontData: mj.fontData,
+      linebreaks: { inline: false },
+    });
     const html = MathJax.document('', { InputJax: tex, OutputJax: svg });
 
     const node = html.convertPromise
@@ -389,7 +395,10 @@ export async function renderLatexToSVG(
       } as unknown as SVGElement;
     } else {
       const parser = new DOMParser();
-      const doc = parser.parseFromString(svgString, 'image/svg+xml');
+      // The lite adaptor serializes HTML, including raw '<' in data-latex
+      // attributes. XML parsing rejects valid inequalities and loses glyphs.
+      // HTML parsing preserves those attributes and the nested SVG namespace.
+      const doc = parser.parseFromString(svgString, 'text/html');
       // @mathjax/src wraps SVG in <mjx-container>; extract the inner <svg>
       const innerSvg = doc.querySelector('svg');
       svgElement = (innerSvg || doc.documentElement) as unknown as SVGElement;

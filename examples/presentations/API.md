@@ -2,6 +2,125 @@
 
 `manim-web/reveal` is an optional entry point. The core library does not import Reveal. The starter and examples use Reveal 6's public stylesheet and notes-plugin exports.
 
+## Text and formulas with automatic layout
+
+`defineSlide` returns a `SceneDefinition`, so it works with the existing `sceneSlides(id, loader)` helper. Content flows below its title without positioning individual lines:
+
+```ts
+import { defineSlide } from 'manim-web/reveal';
+
+export default defineSlide({ title: 'Gradient descent' }, async (s) => {
+  const intro = s.paragraph('To reduce a function $f$, move against its slope.');
+  const rule = s.math(String.raw`x_{k+1}=x_k-\eta f'(x_k)`);
+  const points = s.bullets([
+    String.raw`Choose a step size $\eta > 0$.`,
+    'Repeat until the changes become small.',
+  ]);
+
+  await s.step({ id: 'rule' }, async () => {
+    await s.reveal(intro);
+    await s.write(rule);
+  });
+  await s.step({ id: 'step-size' }, () => s.reveal(points.item(0)));
+  await s.step({ id: 'repeat' }, () => s.reveal(points.item(1)));
+});
+```
+
+Declare every layout block before the first step or animation. Preparation waits for text and formulas, wraps paragraphs to their region's width, and fixes the layout once. Hidden blocks reserve their eventual space, so revealing a bullet does not move earlier content. The title appears immediately; body blocks appear when animated. To introduce a new layout, use another `defineSlide` module.
+
+`paragraph` accepts prose with `$inline math$`, and `math` accepts a complete formula without dollar delimiters. Bullet items use the same wrapping and inline math as paragraphs. `points.item(index)` returns the whole bullet and its content as one animation target. `s.reveal(points)` reveals the full list together. Use `String.raw` when a JavaScript string contains LaTeX backslashes; `\$` represents a literal dollar sign in prose.
+
+`s.reveal(...)` uses `FadeIn`; `s.write(object)` uses `Write`; `s.play(...)` accepts ordinary animations. Use `await s.show(...)` inside a step to display content immediately without an entrance animation. Two awaited calls run sequentially, and several animations passed to one `s.play(...)` run together. One `s.step(...)` creates one pause after all of its animations. Use separate steps when the presenter should advance between reveals.
+
+### Typography and colors
+
+The default theme supplies sizes, spacing, and colors. Override only what the lesson needs:
+
+```ts
+defineSlide(
+  {
+    title: 'A shared visual style',
+    theme: {
+      bodySize: 30,
+      mathSize: 42,
+      colors: { accent: '#58c4dd', secondary: '#f4cf6b' },
+    },
+  },
+  async (s) => {
+    const text = s.paragraph('A useful observation.', { color: 'accent' });
+    await s.step({ id: 'observation' }, () => s.reveal(text));
+  },
+);
+```
+
+Available color roles are `text`, `muted`, `accent`, `secondary`, and `background`. Content also accepts CSS colors. Themes include `fontFamily`, optional `fontUrl`, `titleSize`, `bodySize`, `mathSize`, `lineHeight`, `margin`, `gap`, `itemGap`, `columnGap`, and animation `duration`. Share a theme object across modules for a consistent deck. Paragraph and formula options accept `fontSize` for a local override.
+
+Text and formulas keep their authored font size. Layout overflow throws an explanatory error: split the content, shorten it, or choose a smaller size or spacing. This makes an accidentally crowded slide visible during preparation.
+
+### Add a visualization
+
+Regions use the same content helpers. Column weights describe proportions of the available width:
+
+```ts
+const [content, figure] = s.columns([3, 2]);
+const explanation = content.paragraph('A parabola has its minimum at $x=0$.');
+const axes = new Axes({
+  xRange: [-2, 2, 1],
+  yRange: [0, 4, 1],
+  xLength: 4,
+  yLength: 3,
+});
+const curve = axes.plot((x) => x * x);
+const diagram = figure.place(new VGroup(axes, curve), { height: 3.5 });
+
+await s.step({ id: 'graph' }, () => s.reveal(explanation, diagram));
+```
+
+Import `Axes` and `VGroup` from `manim-web`. Group objects that must keep their relative positions before passing them to `place`. Placement aligns the group within the region and, by default, shrinks it if necessary to fit its width and optional reserved `height`. `fit: 'none'` preserves its size; `align` accepts `'left'`, `'center'`, or `'right'`. Ordinary mathematical geometry and animations retain their usual APIs. `s.scene` exposes the underlying `RecordingScene` for manual scene operations.
+
+### Name formula parts
+
+Keep each formula part's identity, LaTeX, and color together:
+
+```ts
+const equation = s.math([
+  { key: 'incident', latex: String.raw`\theta_i`, color: 'accent' },
+  '=',
+  { key: 'outgoing', latex: String.raw`\theta_r`, color: 'secondary' },
+]);
+
+await s.step({ id: 'angles' }, async () => {
+  await s.write(equation);
+  await s.play(new Indicate(equation.part('incident')));
+});
+```
+
+Import `Indicate` from `manim-web`. Named keys must be nonempty and unique. Each part should be a complete LaTeX fragment. `part(key)` becomes available after preparation, so use it inside a step callback. It also selects unique existing `matchingKeys`; repeated unnamed strings require explicit names to avoid ambiguity. `getPart(index)` remains available.
+
+Core `new MathTex({ latex: [...] })` supports the same descriptors, typed as `MathTexNamedPart`, using CSS colors. `s.math` additionally resolves theme color roles. `TransformMatchingTex` matches the named identities automatically. For a replacement formula created during a step, await `target.waitForRender()`, position it at `source.getCenter()`, then play `new TransformMatchingTex(source, target)`. Such a replacement uses the existing formula's space rather than declaring another layout block. The [quadratic lesson](lesson/quadratic.ts) shows this sequence.
+
+### Static Markdown math
+
+`markdownSlide` supports `$inline math$` and `$$display math$$` alongside ordinary Markdown:
+
+```ts
+markdownSlide(
+  'summary',
+  String.raw`## The update rule
+
+For a step size $\eta > 0$:
+
+$$x_{k+1}=x_k-\eta f'(x_k).$$
+`,
+);
+```
+
+Code spans and code blocks remain literal. Escape currency dollar signs as `\$`. Static math uses bundled KaTeX and its fonts; animated `MathTex` uses MathJax. Use notation supported by the relevant renderer.
+
+## Direct scene authoring
+
+Use a `SceneDefinition` directly when the scene calls for manually arranged objects:
+
 ```ts
 import { Circle, Create } from 'manim-web';
 import type { SceneDefinition } from 'manim-web/reveal';
@@ -68,6 +187,8 @@ An instance supplied as `scene` is borrowed by default; a factory transfers owne
 `Tex({ latex: '{{Ray Tracing}} {{for}} {{Radio}}', fontUrl, fontWeight: 'bold' })` uses the supplied TTF/OTF outlines for literal Latin titles. The supported subset is single-line Latin letters, numbers, ordinary spaces and punctuation, with `{{...}}` matching boundaries or an explicit array of parts. TeX commands, control characters, scripts requiring shaping and unavailable glyphs fail explicitly. `matchingKeys` distinguishes repeated parts. Copies and interrupted `Write`/`TransformMatchingTex` preserve font and part identity. These titles expose literal selectable prose, original TeX source ranges and the font asset for native printing; omit `fontUrl` for normal MathJax text-mode rendering. Mathematical `MathTex` uses the bundled MathJax fonts, including calligraphic and double-struck alphabets.
 
 Paused selection and printed prose come from the same semantic runs. Hidden/replaced and fully offscreen text is excluded. Mathematical formulas retain LaTeX source for accessibility and copying while their SVG-derived glyphs remain in graphics captures. This differs from selectable native prose. Latin text and the examples' formula macros are qualified; arbitrary script shaping and arbitrary Python LaTeX preambles are not promised.
+
+Automatically laid-out paragraphs and bullets keep these semantics: settled prose is selectable, and inline formulas retain their LaTeX source. Wrapping and grouping a bullet do not turn its text into a single image. Vector formulas use their authored named parts for matching, independently of the prose selection model.
 
 LaTeX copying applies to the browser overlay. Chromium may omit its transparent formula text when creating a PDF; PDF formula graphics remain visible, but selectable LaTeX is not guaranteed. Qualification records the formula source runs actually extracted from each PDF instead of treating them as native prose.
 
