@@ -45,6 +45,7 @@ export {
 
 // Paragraph - Text with word wrapping
 export { Paragraph, type ParagraphOptions } from './Paragraph';
+export { RichParagraph, type RichParagraphOptions } from './RichParagraph';
 
 // MarkupText - Text with Pango-like XML markup (bold, italic, colors, spans, etc.)
 export { MarkupText, type MarkupTextOptions, type StyledTextSegment } from './MarkupText';
@@ -53,7 +54,13 @@ export { MarkupText, type MarkupTextOptions, type StyledTextSegment } from './Ma
 export { ensureKatexStyles, areKatexStylesLoaded, setKatexStylesheetUrl } from './katexStyles';
 
 // MathTex - SVG vector-based LaTeX rendering (default, like Python Manim)
-export { MathTex, type MathTexOptions, MathTexSVG, type MathTexSVGOptions } from './MathTex';
+export {
+  MathTex,
+  type MathTexOptions,
+  type MathTexNamedPart,
+  MathTexSVG,
+  type MathTexSVGOptions,
+} from './MathTex';
 
 // MathTexImage - Rasterized LaTeX rendering (KaTeX default, MathJax fallback)
 export { MathTexImage, type MathTexImageOptions, type TexRenderer } from './MathTexImage';

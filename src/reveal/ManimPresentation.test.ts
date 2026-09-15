@@ -164,6 +164,46 @@ afterEach(() => {
 });
 
 describe('Reveal presentation integration', () => {
+  // MIGRATION: pending forward navigation hides completed posters synchronously,
+  // and cancellation restores them without allowing stale loads to reveal one.
+  it('hides completed previews until the destination starts playing', async () => {
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const scene: SceneDefinition = { build: async () => {} };
+    const definition = presentation({
+      title: 'Test presentation',
+      topics: [
+        topic('first', [sceneSlides('shapes', async () => scene)]),
+        topic('second', [
+          sceneSlides('shapes', async () => {
+            await pending;
+            return scene;
+          }),
+        ]),
+      ],
+    });
+    const { deck, navigate } = createDeck();
+    const plugin = manimPresentation(definition, { assets: assets() });
+    await plugin.init(deck);
+    await flush();
+    const destination = plugin.routes.find((route) => route.id === 'second/shapes/one')!.element;
+    const poster = destination.querySelector<HTMLElement>('.manim-poster')!;
+    const initialVisibility = getComputedStyle(poster).visibility;
+    navigate(1, 0);
+    expect(getComputedStyle(poster).visibility).toBe('hidden');
+    navigate(0, 0);
+    expect(getComputedStyle(poster).visibility).toBe(initialVisibility);
+    navigate(1, 0);
+    release();
+    await flush();
+    expect(destination.dataset.preparing).toBeUndefined();
+    expect(destination.dataset.live).toBe('true');
+    expect(getComputedStyle(poster).visibility).toBe('hidden');
+    expect(players.at(-1)!.calls.at(-1)).toBe('play:one');
+  });
+
   // MIGRATION: authored checkpoints map bijectively to native (h,v) leaves and
   // flat handout pages; backward/overview navigation restores completed states.
   it('uses both axes, prepares unvisited print pages, and preserves print playback', async () => {

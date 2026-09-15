@@ -538,15 +538,27 @@ export class Text extends TexturedMobject {
     const scaledFontSize = this._fontSize * RESOLUTION_SCALE;
     const scaledLineHeight = scaledFontSize * this._lineHeight;
 
-    // Measure each line width
+    // Measure ink in the same baseline mode used by _renderToCanvas. Font sizes
+    // are CSS points, so a glyph's descent can exceed the requested pixel line
+    // advance; the final descender still needs room inside the texture.
+    const previousBaseline = this._ctx.textBaseline;
+    this._ctx.textBaseline = 'top';
     let maxWidth = 0;
-    for (const line of lines) {
+    let inkBottom = 0;
+    for (const [index, line] of lines.entries()) {
       const metrics = this._ctx.measureText(line);
       const lineWidth =
         metrics.width +
         Math.max(0, textGraphemes(line).length - 1) * this._letterSpacing * RESOLUTION_SCALE;
       maxWidth = Math.max(maxWidth, lineWidth);
+      if (Number.isFinite(metrics.actualBoundingBoxDescent)) {
+        inkBottom = Math.max(
+          inkBottom,
+          index * scaledLineHeight + metrics.actualBoundingBoxDescent,
+        );
+      }
     }
+    this._ctx.textBaseline = previousBaseline;
 
     // Calculate total height
     const totalHeight = lines.length * scaledLineHeight;
@@ -554,7 +566,8 @@ export class Text extends TexturedMobject {
     // Add padding
     const padding = scaledFontSize * 0.2;
     const width = Math.ceil(maxWidth + padding * 2);
-    const height = Math.ceil(totalHeight + padding * 2);
+    const strokeOutset = (Math.max(0, this.strokeWidth) * RESOLUTION_SCALE) / 2;
+    const height = Math.ceil(Math.max(totalHeight, inkBottom + strokeOutset) + padding * 2);
 
     return { lines, width, height };
   }
@@ -829,6 +842,14 @@ export class Text extends TexturedMobject {
     group.add(this._mesh);
 
     return group;
+  }
+
+  /**
+   * Headless text has no canvas, so its backing group holds no geometry to bound.
+   * @post result === (this._canvas === null && this.children.every(child => child.isEmpty()))
+   */
+  override isEmpty(): boolean {
+    return this._canvas === null && this.children.every((child) => child.isEmpty());
   }
 
   override getDisplayMeshLength(): number {

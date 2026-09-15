@@ -1,5 +1,5 @@
-import { marked } from 'marked';
 import { appendSemanticText } from '../presentation/semantic';
+import { renderMarkdown } from './markdownMath';
 import type { CheckpointSnapshot, SlideAppearance, StaticSlide } from './types';
 
 export function applyBackground(element: HTMLElement, slide: SlideAppearance): void {
@@ -69,8 +69,7 @@ function addMedia(element: HTMLElement, slide: StaticSlide, printing: boolean): 
 function addStaticContent(element: HTMLElement, slide: StaticSlide, printing: boolean): void {
   if (printing && printReplacement(element, slide)) return;
   if (slide.kind === 'html' || slide.kind === 'markdown') {
-    element.innerHTML =
-      slide.kind === 'html' ? slide.content : marked.parse(slide.content, { async: false });
+    element.innerHTML = slide.kind === 'html' ? slide.content : renderMarkdown(slide.content);
   } else if (slide.kind === 'image') {
     addImage(element, slide.content, slide.alt ?? '', slide.fit);
   } else if (slide.kind === 'video' || slide.kind === 'audio') {

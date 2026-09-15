@@ -207,13 +207,23 @@ export class ManimPresentation {
     // Invalidate pending preparation before starting another navigation. Late
     // promises always dispose their player and cannot replace the current leaf.
     const generation = ++this._generation;
+    this._routes.forEach((candidate) => {
+      delete candidate.element.dataset.preparing;
+    });
+    // Hide the completed preview before yielding to asynchronous scene loading.
+    // Backward navigation and direct links still display the settled checkpoint.
+    if (play && route.slide.kind === 'scene') route.element.dataset.preparing = 'true';
     this.player?.stop();
     previous?.element
       .querySelectorAll<HTMLMediaElement>('audio, video')
       .forEach((media) => media.pause());
-    void this._activate(route, generation, play).catch((error: unknown) => {
-      if (generation === this._generation && !this._disposed) this._reportError(error);
-    });
+    void this._activate(route, generation, play)
+      .catch((error: unknown) => {
+        if (generation === this._generation && !this._disposed) this._reportError(error);
+      })
+      .finally(() => {
+        if (generation === this._generation) delete route.element.dataset.preparing;
+      });
   }
 
   private _shouldPlay(

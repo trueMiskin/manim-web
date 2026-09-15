@@ -6,7 +6,9 @@ import { TextGlyphGroup } from './TextGlyphGroup';
 import { fontFamilyForUrl, loadFontFace } from './TextFont';
 import { DEFAULT_FONT_SIZE_IN_WORLD_SPACE, DEFAULT_FONT_SIZE_PT } from '../../constants/fontRender';
 
-export interface TexOptions extends MathTexOptions {
+export interface TexOptions extends Omit<MathTexOptions, 'latex'> {
+  /** Text-mode LaTeX string or array of strings for multi-part expressions. */
+  latex: string | string[];
   /**
    * Render single-line literal text using this OTF/TTF's outlines.
    * Supports spaces and {{matching parts}}; TeX commands, control characters,

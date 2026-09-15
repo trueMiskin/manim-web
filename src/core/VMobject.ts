@@ -17,7 +17,6 @@ import { lerp, lerpPoint as lerpPoint3D, signedArea2DFromStride } from '../utils
 import type { Point } from './VMobjectCurves';
 
 import { resamplePointList3D } from './VMobjectTransformAlignment';
-import { computePointBounds } from './PointBounds';
 import { isClosedPath } from './VMobjectGeometry';
 import {
   pointFromProportionOnPath,
@@ -827,10 +826,11 @@ export class VMobject extends VMobjectRendering {
     const tempBox = new THREE.Box3();
     const tempMin = new THREE.Vector3();
     const tempMax = new THREE.Vector3();
-    for (const p of this.getAllPoints()) box.expandByPoint(tempMin.set(p[0], p[1], p[2]));
-    // Non-VMobject children use Three.js path.
+    for (const p of this.getPoints()) box.expandByPoint(tempMin.set(p[0], p[1], p[2]));
+    // Ask each child for its complete bounds: vector descendants may themselves
+    // contain texture-backed text, which getAllPoints() deliberately omits.
     for (const child of this.children) {
-      if (!(child instanceof VMobject)) {
+      if (!child.isEmpty()) {
         const b = child.getBounds();
         box.union(
           tempBox.set(
@@ -850,7 +850,7 @@ export class VMobject extends VMobjectRendering {
   }
 
   /**
-   * World-space bounding-box center derived from getAllPoints().
+   * World-space bounding-box center including vector and textured descendants.
    *
    * Matches Python manim: the center is always the midpoint of the axis-aligned
    * bounding box of every point in the family — no per-shape construction-point
@@ -858,11 +858,10 @@ export class VMobject extends VMobjectRendering {
    * sectors), use {@link getCenterOfMass}.
    */
   override getCenter(): Vector3Tuple {
-    const worldPoints = this.getAllPoints();
-    const bounds = computePointBounds(worldPoints);
-    if (!bounds) {
+    if (this.isEmpty()) {
       return [this.position.x, this.position.y, this.position.z];
     }
+    const bounds = this.getBounds();
 
     return [
       (bounds.min.x + bounds.max.x) / 2,

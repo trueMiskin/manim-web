@@ -94,6 +94,8 @@ The optional `manim-web/reveal` integration turns authored animation checkpoints
 
 Start with the [basic presentation](examples/presentations/basic/main.ts) for static bullets, text animations and a moving point with live values, explore [text and mixed media](examples/presentations/README.md), or see the [16-checkpoint tech demo](examples/presentations/tech-demo/README.md), covering shape and formula morphs, bouncing rays, deforming surfaces and scientific data in eight short topics. The [presentation guide](examples/presentations/README.md) documents `slides init`, `dev`, `build`, and `pdf`.
 
+For everyday math teaching, start with the [gradient-descent lesson](examples/presentations/lesson/gradient.ts). `defineSlide` lays out titles, wrapping prose with inline math, formulas, bullets, and columns. Reveal each block at a checkpoint, or target it with ordinary Manim animations. See the [authoring guide](examples/presentations/API.md) for themes, named formula parts, and diagrams.
+
 ## What You Can Build
 
 <table>

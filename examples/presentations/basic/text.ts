@@ -4,6 +4,7 @@ import {
   FadeOut,
   Indicate,
   LaggedStart,
+  LEFT,
   ReplacementTransform,
   Text,
   Write,
@@ -55,7 +56,7 @@ export default {
       ]),
     );
     // Align the list by its left edge even though the lines have different lengths.
-    items.forEach((item) => item.shift([-4 - item.getBounds().min.x, 0, 0]));
+    items.forEach((item) => item.alignTo([-4, 0, 0], LEFT));
 
     await scene.step(
       {
