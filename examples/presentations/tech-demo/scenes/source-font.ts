@@ -1,4 +1,4 @@
-import { fontFamilyForUrl, loadFontFace } from '../../../../src/mobjects/text/TextFont';
+import { fontFamilyForUrl, loadFontFace } from 'manim-web';
 
 const regularUrl = new URL('../assets/fonts/DroidSans.ttf', import.meta.url).href;
 const boldUrl = new URL('../assets/fonts/DroidSans-Bold.ttf', import.meta.url).href;

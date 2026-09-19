@@ -2,7 +2,7 @@ import Reveal from 'reveal.js';
 import Notes from 'reveal.js/plugin/notes';
 import 'reveal.js/reveal.css';
 import 'reveal.js/theme/black.css';
-import { manimPresentation } from '../../../src/reveal';
+import { manimPresentation } from 'manim-web/reveal';
 import { techDemo } from './deck';
 
 const query = new URLSearchParams(location.search);

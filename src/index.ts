@@ -39,6 +39,7 @@ export {
 export { AnimateProxy } from './core/AnimateProxy';
 export { UP, DOWN, LEFT, RIGHT, IN, OUT, ORIGIN, UL, UR, DL, DR } from './core/Mobject';
 export { VMobject, type Point } from './core/VMobject';
+export { resamplePointList3D } from './core/VMobjectTransformAlignment';
 export { VGroup } from './core/VGroup';
 export { VDict, VectorizedPoint } from './core/VDict';
 export { Group } from './core/Group';

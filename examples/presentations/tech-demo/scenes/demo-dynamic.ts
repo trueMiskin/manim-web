@@ -1,6 +1,5 @@
-import { Create, FadeIn, Star, UpdateFromAlphaFunc, linear } from '../../../../src';
-import { defineSlide } from '../../../../src/reveal';
-import { addVec } from '../../../../src/utils/vectors';
+import { Create, FadeIn, Star, UpdateFromAlphaFunc, linear, addVec } from 'manim-web';
+import { defineSlide } from 'manim-web/reveal';
 import { TECH_THEME, label } from './common';
 import { INITIAL_RX, INITIAL_TX, reflectionPath } from './billiard-geometry';
 import { billiardTable } from './billiard-table';

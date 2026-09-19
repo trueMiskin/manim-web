@@ -4,7 +4,9 @@ The optional `manim-web/reveal` entry provides authored topics, animated checkpo
 
 Use `defineSlide` for presentation slides, including static pages. The lesson, basic, text, and mixed examples use its automatic layout. The tech demo combines it with manually positioned scientific animations; a small low-level example demonstrates direct scene construction.
 
-From the repository, run `npm run dev` and open:
+Each example directory is a standalone Vite project: its `package.json` declares its dependencies, and its TypeScript imports only public `manim-web` and `manim-web/reveal` APIs. Copy any one of the directories below to start your own project; its source, assets, Vite configuration and TypeScript configuration travel together.
+
+For development in this repository, run `npm ci`, then `npm run dev`, and open:
 
 - `/examples/presentations/lesson/index.html`: start here for ordinary math lessons. Two short scenes build a gradient-descent explanation with wrapping prose, inline math, bullet reveals, named formula parts, a transformation, and a plot in a second column. A static Markdown recap includes display math.
 - `/examples/presentations/basic/index.html`: the starter deck, with five topics and eleven pages: static pages with the same title alignment and typography as the animated slides, geometry, varied text animations, a moving 2D point with live coordinates, distance and angle, and matrix–vector multiplication calculated one row at a time. [matrix.ts](basic/matrix.ts) uses ordinary LaTeX matrices with automatic column layout.
@@ -17,26 +19,46 @@ See the [authoring API](API.md) for scene steps, embedded playback, text contrac
 
 `defineSlide({ title }, async s => { ... })` handles layout and preparation. Declare `s.paragraph(...)`, `s.math(...)`, and `s.bullets(...)` before the first `s.step(...)`, then reveal them at the desired pauses. For a static page, call `s.show(...)` inside its step, as in [bullets.ts](basic/bullets.ts). Hidden content reserves space; paragraphs wrap, and overflow produces an error. Use `s.columns(...)` and `region.place(...)` when an explanation needs a diagram. Ordinary Manim animations work through `s.play(...)`.
 
-Read [gradient.ts](lesson/gradient.ts) for the everyday pattern, then [quadratic.ts](lesson/quadratic.ts) for columns and a formula transformation. To build or export that example from the repository root:
+Read [gradient.ts](lesson/gradient.ts) for the everyday pattern, then [quadratic.ts](lesson/quadratic.ts) for columns and a formula transformation.
+
+Use Node 20.x (20.19 or later), or Node 22.12 and later, as required by Vite 8. For this unreleased checkout, install the packed library as described below first. In a copied example directory, install the package dependencies and run its scripts:
 
 ```sh
-node scripts/slides.mjs build examples/presentations/lesson
-node scripts/slides.mjs pdf lesson.pdf examples/presentations/lesson
+npm install
+npm run typecheck
+npm run dev
 ```
 
-Use Node 20.x (20.19 or later), or Node 22.12 and later, as required by Vite 8. Create a standalone project after building this library:
+Install Chromium before building a portable site or exporting a PDF:
 
 ```sh
-npm ci
-npm run build
-node scripts/slides.mjs init ../my-presentation
-cd ../my-presentation
-npm install
 npx playwright install chromium
-npm run dev
 npm run build
 npm run pdf
 ```
+
+The examples declare the npm package as their dependency. These presentation APIs include changes that are not published yet (including the tech demo’s curve-resampling export), so use a packed build of this checkout until a release includes them. Build and pack the library, then install that tarball in the copied example before running its scripts:
+
+```sh
+# In the library repository:
+npm ci
+npm run build
+npm pack --pack-destination /tmp
+
+# In the copied example (use the filename printed by npm pack):
+npm install /tmp/manim-web-0.3.24.tgz
+```
+
+This tests the same public package entry points and bundled code a published consumer uses. Do not copy the repository's shared `examples/presentations/vite.config.ts` or `tsconfig.json` into a standalone project: the individual examples already contain independent versions.
+
+Repository development can resolve the public package imports to live source. The root `npm run dev` does this automatically; pass the shared Vite configuration explicitly when building or exporting a repository example:
+
+```sh
+node scripts/slides.mjs build examples/presentations/lesson --config examples/presentations/vite.config.ts
+node scripts/slides.mjs pdf lesson.pdf examples/presentations/lesson --config examples/presentations/vite.config.ts
+```
+
+The shared configuration supplies source aliases and the Typia build plugin, so these commands test changes before publishing. A standalone example uses the compiled npm package and does not need that plugin. `slides init my-presentation` remains available from an installed `manim-web` package to generate a new basic presentation.
 
 `slides build` runs Vite, visits the built deck in Chromium, captures all authored checkpoint states, and packages content-addressed images plus `manim-handout.json` in `dist/`. Serve that directory as a static site. The browser eagerly prepares those print assets, while live scene modules load on navigation. `slides pdf` exports the same flat handout through Chromium. Ordinary viewing and authoring need JavaScript only; Python and a rendering server are not required.
 

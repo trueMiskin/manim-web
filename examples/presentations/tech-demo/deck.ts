@@ -1,4 +1,4 @@
-import { presentation, topic, sceneSlides, type SceneDefinition } from '../../../src/reveal';
+import { presentation, topic, sceneSlides, type SceneDefinition } from 'manim-web/reveal';
 import { prepareSourceFonts } from './scenes/common';
 import { techDemoPalettes } from './palettes';
 

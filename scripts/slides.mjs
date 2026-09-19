@@ -46,28 +46,21 @@ async function init(directory = 'my-presentation') {
     filter: (source) => !['dist', 'node_modules'].includes(source.split(sep).pop()),
   });
   const metadata = JSON.parse(await readFile(join(packageRoot, 'package.json'), 'utf8'));
-  const installedPackage = packageRoot.includes(`${sep}node_modules${sep}`);
+  const template = JSON.parse(await readFile(join(target, 'package.json'), 'utf8'));
   await writeFile(
     join(target, 'package.json'),
     JSON.stringify(
       {
+        ...template,
         name: 'my-manim-presentation',
-        private: true,
-        type: 'module',
-        scripts: { dev: 'slides dev', build: 'slides build', pdf: 'slides pdf' },
         dependencies: {
-          'manim-web': installedPackage ? `^${metadata.version}` : `file:${packageRoot}`,
-          'reveal.js': '^6.0.2',
+          ...template.dependencies,
+          'manim-web': `^${metadata.version}`,
         },
-        devDependencies: { vite: '^8.0.8', typescript: '^5.3.0', '@playwright/test': '^1.58.2' },
       },
       null,
       2,
     ) + '\n',
-  );
-  await writeFile(
-    join(target, 'vite.config.ts'),
-    "import { defineConfig } from 'vite';\nexport default defineConfig({ base: './' });\n",
   );
   await writeFile(
     join(target, 'README.md'),

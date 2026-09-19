@@ -1,5 +1,5 @@
-import { FadeIn, FadeOut, MathTex, Tex, TransformMatchingTex, Write } from '../../../../src';
-import { defineSlide } from '../../../../src/reveal';
+import { FadeIn, FadeOut, MathTex, Tex, TransformMatchingTex, Write } from 'manim-web';
+import { defineSlide } from 'manim-web/reveal';
 import { label, SOURCE_FONT_BOLD, TECH_THEME } from './common';
 
 export default defineSlide(

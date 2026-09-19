@@ -1,5 +1,4 @@
-import type { Vector3Tuple } from '../../../../src/index';
-import { addVec, subVec, scaleVec, dotVec, orientation2D } from '../../../../src/utils/vectors';
+import { type Vector3Tuple, addVec, subVec, scaleVec, dotVec, orientation2D } from 'manim-web';
 
 // Adapted from BilliardTable, get_bounce_path and MLM clipping; see README attribution.
 // helpers. Scientific coordinates remain the original 5 × 3.5 table.
