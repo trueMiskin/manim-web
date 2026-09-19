@@ -34,7 +34,8 @@ export function fieldState(id: string): FieldState {
 }
 
 export type Point = [number, number, number];
-export const tableCenter: Point = [3.15, 0, 0];
+// Use scene-local coordinates for the table, heatmaps, vectors, and trajectories.
+export const tableCenter: Point = [0, 0, 0];
 
 export function point(value: readonly number[], offset: Point = tableCenter): Point {
   return [value[0] + offset[0], value[1] + offset[1], (value[2] ?? 0) + offset[2]];

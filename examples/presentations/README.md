@@ -2,17 +2,20 @@
 
 The optional `manim-web/reveal` entry provides authored topics, animated checkpoint slides, selectable settled text, and one shared print path. Core `manim-web` does not import Reveal.
 
+Use `defineSlide` for presentation slides, including static pages. The lesson, basic, text, and mixed examples use its automatic layout. The tech demo combines it with manually positioned scientific animations; a small low-level example demonstrates direct scene construction.
+
 From the repository, run `npm run dev` and open:
 
 - `/examples/presentations/lesson/index.html`: start here for ordinary math lessons. Two short scenes build a gradient-descent explanation with wrapping prose, inline math, bullet reveals, named formula parts, a transformation, and a plot in a second column. A static Markdown recap includes display math.
-- `/examples/presentations/basic/index.html`: five topics and eleven pages: static bullets, geometry, varied text animations, a moving 2D point with live coordinates, distance and angle, and matrix–vector multiplication calculated one row at a time. [matrix.ts](basic/matrix.ts) uses ordinary LaTeX matrices with automatic column layout.
-- `/examples/presentations/text/index.html`: writing, Unicode graphemes, emphasis, removal, and text selection.
-- `/examples/presentations/mixed/index.html`: Markdown, HTML, SVG, video/audio with print replacements, backgrounds, and a rotating 3D torus.
-- `/examples/presentations/tech-demo/index.html`: the [tech demo](tech-demo/README.md), with eight topics and 17 checkpoints covering shape and formula morphs, bouncing rays, deforming surfaces, heatmaps and optimization. A matching Python scene is included.
+- `/examples/presentations/basic/index.html`: the starter deck, with five topics and eleven pages: static pages with the same title alignment and typography as the animated slides, geometry, varied text animations, a moving 2D point with live coordinates, distance and angle, and matrix–vector multiplication calculated one row at a time. [matrix.ts](basic/matrix.ts) uses ordinary LaTeX matrices with automatic column layout.
+- `/examples/presentations/text/index.html`: writing, Unicode graphemes, emphasis, removal, and text selection, with automatic placement for the animated text.
+- `/examples/presentations/mixed/index.html`: Markdown, HTML, SVG, video/audio with print replacements, backgrounds, and a rotating 3D torus with automatically laid-out text.
+- `/examples/presentations/tech-demo/index.html`: the [tech demo](tech-demo/README.md), with eight topics and 17 checkpoints covering shape and formula morphs, bouncing rays, deforming surfaces, heatmaps and optimization. Seven 2D topics use `defineSlide` for shared titles and checkpoints while keeping geometry and captions in their original coordinates. The 3D topic uses a direct `SceneDefinition`. A matching Python scene is included.
+- `/examples/presentations/low-level/index.html`: one [small direct scene](low-level/scene.ts) with manual positioning, drawing a circle and moving it. Use this as a reference for the underlying API.
 
 See the [authoring API](API.md) for scene steps, embedded playback, text contracts and capture options.
 
-For text and formulas, `defineSlide({ title }, async s => { ... })` handles layout and preparation. Declare `s.paragraph(...)`, `s.math(...)`, and `s.bullets(...)` before the first `s.step(...)`, then reveal them at the desired pauses. Hidden content reserves space; paragraphs wrap, and overflow produces an error. Use `s.columns(...)` and `region.place(...)` when an explanation needs a diagram. Existing `SceneDefinition` modules remain useful for custom animation scenes.
+`defineSlide({ title }, async s => { ... })` handles layout and preparation. Declare `s.paragraph(...)`, `s.math(...)`, and `s.bullets(...)` before the first `s.step(...)`, then reveal them at the desired pauses. For a static page, call `s.show(...)` inside its step, as in [bullets.ts](basic/bullets.ts). Hidden content reserves space; paragraphs wrap, and overflow produces an error. Use `s.columns(...)` and `region.place(...)` when an explanation needs a diagram. Ordinary Manim animations work through `s.play(...)`.
 
 Read [gradient.ts](lesson/gradient.ts) for the everyday pattern, then [quadratic.ts](lesson/quadratic.ts) for columns and a formula transformation. To build or export that example from the repository root:
 

@@ -1,5 +1,5 @@
 import { presentation, topic, sceneSlides, type SceneDefinition } from '../../../src/reveal';
-import { prepareSourceFonts } from './scenes/source-font';
+import { C, prepareSourceFonts } from './scenes/common';
 
 export interface TechDemoOptions {
   topics?: readonly string[];
@@ -41,7 +41,7 @@ export function techDemo(options: TechDemoOptions = {}) {
                   },
                 };
               },
-              { background: '#000000' },
+              { background: C.bg },
             ),
           ],
           { title: item.title },

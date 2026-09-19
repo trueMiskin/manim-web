@@ -8,6 +8,7 @@ import { RichParagraph } from '../mobjects/text/RichParagraph';
 import { ParagraphMathRun, ParagraphTextRun } from '../mobjects/text/RichParagraphRuns';
 import { prepareMobjects } from '../core/readiness';
 import { Line } from '../mobjects/geometry/Line';
+import { Circle } from '../mobjects/geometry/Circle';
 
 beforeEach(() => {
   vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(
@@ -15,6 +16,42 @@ beforeEach(() => {
   );
 });
 afterEach(() => vi.restoreAllMocks());
+
+// MIGRATION: a slot reserves the largest alternative once, while compound
+// alternatives keep their internal flow and captions retain their font size.
+it('keeps bullet lists and captioned figures intact inside a replacement slot', async () => {
+  const title = new RichParagraph({ text: 'Alternatives', width: 12, fontSize: 40 });
+  const layout = new SlideLayout(14, 8, DEFAULT_SLIDE_THEME, title);
+  const region = new SlideRegion(layout, layout.root).columns()[0];
+  const slot = region.slot();
+  const intro = slot.paragraph('A figure follows.');
+  const bullets = slot.bullets(['First observation.', 'Second observation.']);
+  const diagram = new Circle({ radius: 5 });
+  const { caption } = slot.figure(diagram, {
+    height: 2,
+    caption: 'The caption wraps beneath the graphic and keeps its original font size.',
+  });
+  const footer = region.paragraph('Outside the slot.');
+  await layout.prepare();
+
+  expect(diagram.getBounds().max.x - diagram.getBounds().min.x).toBeCloseTo(2);
+  expect(intro.getBounds().max.y).toBeCloseTo(diagram.getBounds().max.y);
+  expect(bullets.item(0).getBounds().max.y).toBeCloseTo(intro.getBounds().max.y);
+  expect(bullets.item(0).getBounds().min.y).toBeGreaterThan(bullets.item(1).getBounds().max.y);
+  expect(caption.getBounds().max.y).toBeCloseTo(
+    diagram.getBounds().min.y - DEFAULT_SLIDE_THEME.captionGap,
+  );
+  expect(caption.getLineCount()).toBeGreaterThan(1);
+  expect(
+    caption.getSemanticTextRuns().every((run) => run.font.size === DEFAULT_SLIDE_THEME.captionSize),
+  ).toBe(true);
+  expect(caption.scaleVector.toArray()).toEqual([1, 1, 1]);
+  expect(diagram.parent).toBeNull();
+  expect(caption.parent).toBeNull();
+  expect(footer.getBounds().max.y).toBeCloseTo(caption.getBounds().min.y - DEFAULT_SLIDE_THEME.gap);
+  expect(() => slot.paragraph('Too late.')).toThrow('before the first step');
+  for (const object of [title, intro, ...bullets.items, diagram, caption, footer]) object.dispose();
+});
 
 // MIGRATION: contain placement keeps every nonempty graphic inside its region,
 // including geometry with a zero extent along either layout dimension.

@@ -10,7 +10,7 @@ import {
   type SlideAlignment,
   type SlidePlacement,
 } from './slideLayout';
-import { slideColor, type SlideTheme } from './slideTheme';
+import { DEFAULT_SLIDE_THEME, slideColor, type SlideTheme } from './slideTheme';
 
 export interface SlideTextOptions {
   fontSize?: number;
@@ -19,6 +19,17 @@ export interface SlideTextOptions {
 }
 
 export type SlideMathOptions = Omit<MathTexOptions, 'latex'> & { align?: SlideAlignment };
+
+export interface SlideFigureOptions extends SlidePlacement {
+  caption: string;
+  captionOptions?: SlideTextOptions;
+}
+
+/** Independently animated graphic and caption; layout does not reparent either object. */
+export interface SlideFigure<T extends Mobject = Mobject> {
+  diagram: T;
+  caption: RichParagraph;
+}
 
 class BulletRow extends VGroup {
   private prepared?: Promise<void>;
@@ -126,6 +137,8 @@ export class SlideRegion {
   bullets(items: readonly string[], options: SlideTextOptions = {}): SlideBullets {
     this.layout.assertOpen();
     if (items.length === 0) throw new Error('A bullet list needs at least one item.');
+    // A whole list is one layout alternative when declared inside a slot.
+    const list = this.layout.section(this.region);
     const rows = items.map((text, index) => {
       const content = new RichParagraph(this.textOptions(text, options));
       const bullet = new ParagraphTextRun({
@@ -138,7 +151,7 @@ export class SlideRegion {
       });
       const row = new BulletRow(bullet, content, this.region.width);
       this.layout.add(
-        this.region,
+        list,
         row,
         {},
         index < items.length - 1 ? this.theme.itemGap : this.theme.gap,
@@ -152,6 +165,39 @@ export class SlideRegion {
   place<T extends Mobject>(object: T, options: SlidePlacement = {}): T {
     this.layout.add(this.region, object, { align: 'center', fit: 'contain', ...options });
     return object;
+  }
+
+  /**
+   * Reserve one fixed area for alternatives declared before the first step.
+   * Alternatives share their top edge and reserve their maximum height once.
+   * Ordinary animations control which alternative is visible.
+   */
+  slot(): SlideRegion {
+    return new SlideRegion(this.layout, this.layout.section(this.region, 'overlay'));
+  }
+
+  /**
+   * Place a graphic with a wrapping caption below its reserved area.
+   * Only the graphic scales to fit; the caption keeps its authored font size.
+   * @post result.diagram === diagram
+   */
+  figure<T extends Mobject>(diagram: T, options: SlideFigureOptions): SlideFigure<T> {
+    const { caption: text, captionOptions, ...placement } = options;
+    const region = this.layout.section(this.region);
+    this.layout.add(
+      region,
+      diagram,
+      { align: 'center', fit: 'contain', ...placement },
+      this.theme.captionGap ?? DEFAULT_SLIDE_THEME.captionGap,
+    );
+    const content = new SlideRegion(this.layout, region);
+    const caption = content.paragraph(text, {
+      fontSize:
+        captionOptions?.fontSize ?? this.theme.captionSize ?? DEFAULT_SLIDE_THEME.captionSize,
+      color: captionOptions?.color ?? 'muted',
+      align: captionOptions?.align ?? 'center',
+    });
+    return { diagram, caption };
   }
 
   /** Create columns whose widths are proportional to the supplied weights. */

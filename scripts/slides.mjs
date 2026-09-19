@@ -71,7 +71,7 @@ async function init(directory = 'my-presentation') {
   );
   await writeFile(
     join(target, 'README.md'),
-    '# Your presentation\n\nRun `npm install`, then `npm run dev`.\n\nBefore the first build, install Chromium with `npx playwright install chromium`.\n`npm run build` writes a portable `dist/` including all handout states.\n`npm run pdf` builds and exports `presentation.pdf`.\n\nEdit `main.ts` for topics and static content; edit `scene.ts`, `text.ts`, `coordinates.ts` and `matrix.ts` for authored animation steps.\n',
+    '# Your presentation\n\nRun `npm install`, then `npm run dev`.\n\nBefore the first build, install Chromium with `npx playwright install chromium`.\n`npm run build` writes a portable `dist/` including all handout states.\n`npm run pdf` builds and exports `presentation.pdf`.\n\nEdit `main.ts` for topics and static content. All slide modules use `defineSlide` for one consistent layout. Start with `intro.ts` and `bullets.ts` for static content using `s.show(...)`; `scene.ts`, `text.ts`, `coordinates.ts` and `matrix.ts` add animation.\n\nDeclare `s.paragraph(...)`, `s.math(...)` and `s.bullets(...)` before the first `s.step(...)`; use `s.columns(...)` and `region.place(...)` for diagrams. Reveal content with `s.reveal(...)` or `s.write(...)`, and use `s.play(...)` for ordinary Manim animations. Each step creates a navigation pause and a printable state.\n',
   );
   process.stdout.write(`Created ${target}\nRun npm install in that directory, then npm run dev.\n`);
 }

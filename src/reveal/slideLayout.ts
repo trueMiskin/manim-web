@@ -8,6 +8,7 @@ export type SlideAlignment = 'left' | 'center' | 'right';
 export interface LayoutRegion {
   width: number;
   nodes: LayoutNode[];
+  flow?: 'stack' | 'overlay';
 }
 
 interface LayoutBlock {
@@ -25,7 +26,13 @@ interface LayoutColumns {
   gap: number;
 }
 
-type LayoutNode = LayoutBlock | LayoutColumns;
+interface LayoutSection {
+  kind: 'section';
+  region: LayoutRegion;
+  gap: number;
+}
+
+type LayoutNode = LayoutBlock | LayoutColumns | LayoutSection;
 
 export interface SlidePlacement {
   align?: SlideAlignment;
@@ -90,6 +97,14 @@ export class SlideLayout {
     return regions;
   }
 
+  /** @pre !this.locked */
+  section(region: LayoutRegion, flow: 'stack' | 'overlay' = 'stack'): LayoutRegion {
+    this.assertOpen();
+    const child: LayoutRegion = { width: region.width, nodes: [], flow };
+    region.nodes.push({ kind: 'section', region: child, gap: this.theme.gap });
+    return child;
+  }
+
   assertOpen(): void {
     if (this.locked)
       throw new Error(
@@ -106,7 +121,14 @@ export class SlideLayout {
     const titleBounds = this.title.getBounds();
     if (titleBounds.max.x - titleBounds.min.x > this.root.width + 1e-6)
       throw new Error('Slide title exceeds the available width. Shorten it or reduce titleSize.');
-    this.title.shift([left - titleBounds.min.x, top - titleBounds.max.y, 0]);
+    const titleWidth = titleBounds.max.x - titleBounds.min.x;
+    const titleOffset =
+      this.theme.titleAlign === 'center'
+        ? (this.root.width - titleWidth) / 2
+        : this.theme.titleAlign === 'right'
+          ? this.root.width - titleWidth
+          : 0;
+    this.title.shift([left + titleOffset - titleBounds.min.x, top - titleBounds.max.y, 0]);
     const bodyTop = this.title.getBounds().min.y - this.theme.gap;
     const height = this.measure(this.root);
     if (height > bodyTop + this.frameHeight / 2 - this.theme.margin + 1e-6)
@@ -119,14 +141,21 @@ export class SlideLayout {
   private measure(region: LayoutRegion): number {
     let total = 0;
     for (const [index, node] of region.nodes.entries()) {
-      const height =
-        node.kind === 'columns'
-          ? Math.max(...node.regions.map((column) => this.measure(column)))
-          : this.measureBlock(node, region.width);
+      const height = this.measureNode(node, region.width);
       this.heights.set(node, height);
-      total += height + (index < region.nodes.length - 1 ? node.gap : 0);
+      total =
+        region.flow === 'overlay'
+          ? Math.max(total, height)
+          : total + height + (index < region.nodes.length - 1 ? node.gap : 0);
     }
     return total;
+  }
+
+  private measureNode(node: LayoutNode, width: number): number {
+    if (node.kind === 'columns')
+      return Math.max(...node.regions.map((column) => this.measure(column)));
+    if (node.kind === 'section') return this.measure(node.region);
+    return this.measureBlock(node, width);
   }
 
   private measureBlock(block: LayoutBlock, width: number): number {
@@ -159,6 +188,8 @@ export class SlideLayout {
           this.position(column, columnLeft, cursor);
           columnLeft += column.width + this.theme.columnGap;
         }
+      } else if (node.kind === 'section') {
+        this.position(node.region, left, cursor);
       } else {
         const bounds = node.object.getBounds();
         const width = bounds.max.x - bounds.min.x;
@@ -171,7 +202,7 @@ export class SlideLayout {
         const vertical = (height - (bounds.max.y - bounds.min.y)) / 2;
         node.object.shift([left + offset - bounds.min.x, cursor - vertical - bounds.max.y, 0]);
       }
-      cursor -= height + node.gap;
+      if (region.flow !== 'overlay') cursor -= height + node.gap;
     }
   }
 }

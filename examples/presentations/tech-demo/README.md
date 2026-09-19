@@ -2,6 +2,8 @@
 
 A short feature tour: **8 topics, 17 checkpoints**, with text and formulas demonstrated in just two slides. The TypeScript deck and the [Python presentation](reference/main.py) follow the same sequence.
 
+The 2D topics use `defineSlide` for shared title styling and checkpoints, with ordinary Manim objects and animations for their scientific content. Diagrams and captions keep one fixed coordinate system, so later transforms and updaters need no layout offsets. The 3D topic uses a direct `SceneDefinition` for its camera and fixed screen labels. Captions stay beneath their graphics, the introductory text clears before the equation sequence, and reflection changes to refraction in the same area. Scientific constructions and numerical data follow the Python source. Start with the [lesson](../lesson/main.ts) to see automatic paragraphs, columns, and diagram placement, or see the separate [low-level example](../low-level/scene.ts) for direct scene construction.
+
 | Topic                  | First checkpoint             | Following checkpoints                            |
 | ---------------------- | ---------------------------- | ------------------------------------------------ |
 | Text and formulas      | Write text                   | Match words and render LaTeX                     |
@@ -103,7 +105,7 @@ npm run typecheck:presentations
 npm run test:tech-demo
 ```
 
-The browser checks cover all 17 PDF pages, selectable text, backward navigation, offline assets and handout cache revalidation. Reports and PDF previews are written to `qualification-results/tech-demo/`. Formula source is selectable in the browser; PDF text extraction depends on Chromium.
+The browser checks cover the original text-replacement sequence and caption placement, all 17 PDF pages, selectable text, backward navigation, offline assets and handout cache revalidation. Reports and PDF previews are written to `qualification-results/tech-demo/`. Formula source is selectable in the browser; PDF text extraction depends on Chromium.
 
 ## Attribution
 

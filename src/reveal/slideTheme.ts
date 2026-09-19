@@ -1,13 +1,20 @@
+import type { SlideAlignment } from './slideLayout';
+
 /** Shared typography and spacing for content authored with defineSlide. */
 export interface SlideTheme {
   fontFamily: string;
   fontUrl?: string;
+  titleFontFamily?: string;
+  titleFontUrl?: string;
+  titleAlign?: SlideAlignment;
   titleSize: number;
   bodySize: number;
+  captionSize?: number;
   mathSize: number;
   lineHeight: number;
   margin: number;
   gap: number;
+  captionGap?: number;
   itemGap: number;
   columnGap: number;
   duration: number;
@@ -24,14 +31,19 @@ export type SlideThemeOptions = Partial<Omit<SlideTheme, 'colors'>> & {
   colors?: Partial<SlideTheme['colors']>;
 };
 
-export const DEFAULT_SLIDE_THEME: Readonly<SlideTheme> = Object.freeze({
+type ResolvedSlideTheme = SlideTheme & Required<Pick<SlideTheme, 'captionSize' | 'captionGap'>>;
+
+export const DEFAULT_SLIDE_THEME: Readonly<ResolvedSlideTheme> = Object.freeze({
   fontFamily: 'sans-serif',
   titleSize: 42,
+  titleAlign: 'left',
   bodySize: 28,
+  captionSize: 22,
   mathSize: 40,
   lineHeight: 1.35,
   margin: 0.65,
   gap: 0.4,
+  captionGap: 0.2,
   itemGap: 0.22,
   columnGap: 0.7,
   duration: 0.65,
@@ -52,17 +64,21 @@ export function slideColor(theme: SlideTheme, color = 'text'): string {
 }
 
 /** @post result.colors !== DEFAULT_SLIDE_THEME.colors */
-export function resolveSlideTheme(options: SlideThemeOptions = {}): SlideTheme {
+export function resolveSlideTheme(options: SlideThemeOptions = {}): ResolvedSlideTheme {
   const theme = {
     ...DEFAULT_SLIDE_THEME,
     ...options,
+    captionSize: options.captionSize ?? DEFAULT_SLIDE_THEME.captionSize,
+    captionGap: options.captionGap ?? DEFAULT_SLIDE_THEME.captionGap,
     colors: { ...DEFAULT_SLIDE_THEME.colors, ...options.colors },
   };
-  for (const key of ['titleSize', 'bodySize', 'mathSize', 'lineHeight'] as const) {
+  if (!['left', 'center', 'right'].includes(theme.titleAlign ?? 'left'))
+    throw new Error('Slide titleAlign must be left, center, or right.');
+  for (const key of ['titleSize', 'bodySize', 'captionSize', 'mathSize', 'lineHeight'] as const) {
     if (!Number.isFinite(theme[key]) || theme[key] <= 0)
       throw new Error(`Slide theme ${key} must be a positive finite number.`);
   }
-  for (const key of ['margin', 'gap', 'itemGap', 'columnGap', 'duration'] as const) {
+  for (const key of ['margin', 'gap', 'captionGap', 'itemGap', 'columnGap', 'duration'] as const) {
     if (!Number.isFinite(theme[key]) || theme[key] < 0)
       throw new Error(`Slide theme ${key} must be a nonnegative finite number.`);
   }

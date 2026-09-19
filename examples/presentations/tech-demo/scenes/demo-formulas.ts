@@ -11,12 +11,12 @@ import {
   TransformMatchingTex,
   Write,
 } from '../../../../src';
-import type { SceneDefinition } from '../../../../src/reveal';
-import { C, heading, label } from './common';
+import { defineSlide } from '../../../../src/reveal';
+import { C, label, TECH_THEME } from './common';
 
-export default {
-  options: { backgroundColor: C.bg },
-  async build(scene) {
+export default defineSlide(
+  { title: 'Formula morphing', titleVisible: false, theme: TECH_THEME },
+  async (s) => {
     const reflection = new MathTex({
       latex: [String.raw`\theta_i`, '=', String.raw`\theta_r`],
       matchingKeys: ['incident', 'equals', 'outgoing'],
@@ -127,26 +127,26 @@ export default {
     const reflectionLabel = label('Reflection', 27, C.text, [-3.2, -0.65, 0]);
     const refractionLabel = label('Refraction', 27, C.text, [-3.2, -0.65, 0]);
 
-    await scene.step(
+    await s.step(
       {
         id: 'formulas-reflection',
         title: 'Reflection: equal angles',
         notes: 'The incident and reflected angles are measured from the surface normal.',
       },
       async () => {
-        await scene.play(
-          new FadeIn(heading('Formula morphing')),
+        await s.play(
+          new FadeIn(s.title),
           new FadeIn(medium),
           new Create(boundary),
           new Create(normal),
         );
-        await scene.play(
+        await s.play(
           new Write(reflection),
           new FadeIn(reflectionLabel),
           new Create(incoming),
           new Create(outgoing),
         );
-        await scene.play(
+        await s.play(
           new Create(incidentArc),
           new Create(outgoingArc),
           new FadeIn(incidentAngle),
@@ -154,7 +154,7 @@ export default {
         );
       },
     );
-    await scene.step(
+    await s.step(
       {
         id: 'formulas-refraction',
         title: 'Refraction: matching symbols',
@@ -162,7 +162,7 @@ export default {
           'Shared equation parts move into Snell’s law while the outgoing ray turns into the second medium. The indices are n₁ = 1 and n₂ = 1.5.',
       },
       async () => {
-        await scene.play(
+        await s.play(
           new TransformMatchingTex(reflection, refraction, { duration: 2.5 }),
           new Transform(outgoing, transmitted, { duration: 2.5 }),
           new Transform(outgoingArc, transmittedArc, { duration: 2.5 }),
@@ -174,10 +174,10 @@ export default {
           new FadeIn(label('n₁ = 1', 20, C.muted, [5.5, 0.25, 0])),
           new FadeIn(label('n₂ = 1.5', 20, C.text, [5.45, -0.55, 0])),
         );
-        await scene.play(
+        await s.play(
           new FadeIn(label('Matching symbols move as the ray changes', 22, C.muted, [0, -3.25, 0])),
         );
       },
     );
   },
-} satisfies SceneDefinition;
+);

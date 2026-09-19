@@ -1,10 +1,10 @@
 import { FadeIn, FadeOut, MathTex, Tex, TransformMatchingTex, Write } from '../../../../src';
-import type { SceneDefinition } from '../../../../src/reveal';
-import { C, heading, label, SOURCE_FONT_BOLD } from './common';
+import { defineSlide } from '../../../../src/reveal';
+import { C, label, SOURCE_FONT_BOLD, TECH_THEME } from './common';
 
-export default {
-  async build(scene) {
-    const title = heading('manim-web tech demo');
+export default defineSlide(
+  { title: 'manim-web tech demo', titleVisible: false, theme: TECH_THEME },
+  async (s) => {
     const subtitle = label('Text, geometry and scientific animation', 30, C.cyan, [0, 1.7, 0]);
     const capabilities = label('Write • transform • animate • pause', 24, C.text, [0, 0, 0]);
     const controls = label(
@@ -13,7 +13,7 @@ export default {
       C.muted,
       [0, -2, 0],
     );
-    await scene.step(
+    await s.step(
       {
         id: 'text-intro',
         title: 'Text',
@@ -21,8 +21,8 @@ export default {
           'Written text becomes selectable when playback pauses. This is the first of two text examples.',
       },
       async () => {
-        await scene.play(new Write(title), new FadeIn(subtitle));
-        await scene.play(new Write(capabilities), new FadeIn(controls));
+        await s.play(new Write(s.title), new FadeIn(subtitle));
+        await s.play(new Write(capabilities), new FadeIn(controls));
       },
     );
 
@@ -47,7 +47,7 @@ export default {
       color: C.text,
     }).moveTo([0, -0.4, 0]);
     const caption = label('Selectable text and LaTeX at each pause', 22, C.muted, [0, -2.2, 0]);
-    await scene.step(
+    await s.step(
       {
         id: 'text-math',
         title: 'Matching text and LaTeX',
@@ -55,13 +55,11 @@ export default {
           'The shared word stays in place during the matching transform. Select the final text or copy the formula source at the pause.',
       },
       async () => {
-        await scene.play(
-          ...[subtitle, capabilities, controls].map((object) => new FadeOut(object)),
-        );
-        await scene.play(new Write(from));
-        await scene.play(new TransformMatchingTex(from, to), new Write(equation));
-        await scene.play(new FadeIn(caption));
+        await s.play(...[subtitle, capabilities, controls].map((object) => new FadeOut(object)));
+        await s.play(new Write(from));
+        await s.play(new TransformMatchingTex(from, to), new Write(equation));
+        await s.play(new FadeIn(caption));
       },
     );
   },
-} satisfies SceneDefinition;
+);

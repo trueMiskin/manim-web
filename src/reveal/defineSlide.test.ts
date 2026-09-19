@@ -10,6 +10,7 @@ import { Create } from '../animation/creation/Create';
 import { FadeOut } from '../animation/fading/FadeOut';
 import { ReplacementTransform } from '../animation/transform/Transform';
 import { TransformMatchingTex } from '../animation/transform/TransformMatching';
+import type { AnimationOptions } from '../animation/Animation';
 import type { MathTex } from '../mobjects/text/MathTex';
 import type { RichParagraph } from '../mobjects/text/RichParagraph';
 import type { SlideBullets } from './slideBlocks';
@@ -43,6 +44,108 @@ function makePlayer(): Player {
 }
 
 describe('content slide authoring', () => {
+  // MIGRATION: titles obey the same authored-opacity restoration as body blocks,
+  // whether initially visible or introduced through an explicit animation.
+  it('restores a default-visible title after fading it out', async () => {
+    const player = makePlayer();
+    let title!: RichParagraph;
+    const definition = defineSlide({ title: 'A returning title' }, async (s) => {
+      title = s.title;
+      await s.step({ id: 'initial' }, () => {});
+      await s.step({ id: 'out' }, () => s.play(new FadeOut(s.title, { duration: 0.1 })));
+      await s.step({ id: 'return' }, () => s.reveal(s.title));
+    });
+    await player.sequence(definition.build);
+    const expected = title.getBounds();
+    player.seekCheckpoint('out');
+    expect(player.inspectText()).toHaveLength(0);
+    player.seekCheckpoint('return');
+    expect(player.inspectText().some((run) => run.text === 'returning')).toBe(true);
+    expect(title.opacity).toBe(1);
+    expect(title.getBounds()).toEqual(expected);
+    player.seekCheckpoint('initial');
+    expect(title.getBounds()).toEqual(expected);
+  });
+
+  // MIGRATION: alternative content shares one fixed area; replacing or seeking
+  // never moves neighboring blocks or exposes a previous state's selectable text,
+  // even when JavaScript callers supply extra animation options.
+  it('crossfades slot alternatives and restores an authored title entrance on every seek', async () => {
+    const player = makePlayer();
+    let title!: RichParagraph;
+    let first!: RichParagraph;
+    let second!: RichParagraph;
+    let footer!: RichParagraph;
+    const definition = defineSlide(
+      {
+        title: 'Laws of light',
+        titleVisible: false,
+        theme: {
+          duration: 0.1,
+          fontUrl: '/body.ttf',
+          titleFontFamily: 'serif',
+          titleAlign: 'center',
+        },
+      },
+      async (s) => {
+        title = s.title;
+        const description = s.slot();
+        first = description.paragraph('Reflection.');
+        second = description.paragraph('Refraction.\nThrough the medium.');
+        footer = s.paragraph('The diagram stays in place.');
+        await s.step({ id: 'empty' }, () => s.show(footer));
+        await s.step({ id: 'intro' }, async () => {
+          await s.write(s.title);
+          await s.show(first);
+        });
+        const extraOptions: AnimationOptions = { duration: 0.1, shift: [0, 1, 0] };
+        await s.step({ id: 'replace' }, () => s.replace(first, second, extraOptions));
+        await s.step({ id: 'return' }, () =>
+          s.replace(second, first, { duration: 0.1, rateFunc: (t) => t }),
+        );
+      },
+    );
+    await player.sequence(definition.build);
+    const bounds = {
+      first: first.getBounds(),
+      second: second.getBounds(),
+      footer: footer.getBounds(),
+    };
+    expect(bounds.first.max.y).toBeCloseTo(bounds.second.max.y);
+    expect(bounds.footer.max.y).toBeCloseTo(bounds.second.min.y - DEFAULT_SLIDE_THEME.gap);
+    expect(title.getSemanticTextRuns().every((run) => run.font.family === 'serif')).toBe(true);
+    expect(title.getSemanticTextRuns().every((run) => run.font.url === undefined)).toBe(true);
+    expect(footer.getSemanticTextRuns().every((run) => run.font.url === '/body.ttf')).toBe(true);
+    expect(title.getCenter()[0]).toBeCloseTo(0);
+
+    player.seekCheckpoint('empty');
+    expect(title.getThreeObject().visible).toBe(false);
+    expect(player.inspectText().some((run) => /Reflection|Refraction|Laws/.test(run.text))).toBe(
+      false,
+    );
+    player.seekCheckpoint('intro');
+    expect(title.getThreeObject().visible).toBe(true);
+    expect(player.inspectText().some((run) => run.text === 'Reflection.')).toBe(true);
+    expect(player.inspectText().some((run) => run.text === 'Refraction.')).toBe(false);
+    player.seekCheckpoint('replace');
+    expect(player.scene.mobjects.has(first)).toBe(false);
+    expect(player.inspectText().some((run) => run.text === 'Reflection.')).toBe(false);
+    expect(player.inspectText().some((run) => run.text === 'Refraction.')).toBe(true);
+    player.seek(0.15);
+    const partial = player.inspectText();
+    player.seekCheckpoint('return');
+    expect(player.scene.mobjects.has(second)).toBe(false);
+    expect(player.inspectText().some((run) => run.text === 'Reflection.')).toBe(true);
+    player.seek(0.15);
+    expect(player.inspectText()).toEqual(partial);
+    player.seekCheckpoint('intro');
+    expect({
+      first: first.getBounds(),
+      second: second.getBounds(),
+      footer: footer.getBounds(),
+    }).toEqual(bounds);
+  });
+
   // MIGRATION: any seek history preserves layout and reveals exactly the objects
   // authored at that checkpoint, including complete multi-line bullet rows.
   it('reserves hidden content and restores individually revealed rows without moving earlier blocks', async () => {
@@ -160,9 +263,10 @@ describe('content slide authoring', () => {
     let replacement!: MathTex;
     let matching!: MathTex;
     const definition = defineSlide({ title: 'Replace a formula' }, async (s) => {
-      source = s.math('x');
-      replacement = s.math('y');
-      matching = s.math('z');
+      const equation = s.slot();
+      source = equation.math('x');
+      replacement = equation.math('y');
+      matching = equation.math('z');
       await s.step({ id: 'source' }, () => s.show(source));
       await s.step({ id: 'replace' }, () =>
         s.play(new ReplacementTransform(source, replacement, { duration: 0.2 })),

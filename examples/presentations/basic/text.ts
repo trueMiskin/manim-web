@@ -7,27 +7,40 @@ import {
   LEFT,
   ReplacementTransform,
   Text,
-  Write,
 } from 'manim-web';
-import type { SceneDefinition } from 'manim-web/reveal';
+import { defineSlide } from 'manim-web/reveal';
 
-export default {
-  async build(scene) {
-    const heading = new Text({ text: 'Give words a little motion', fontSize: 44 }).shift([
-      0, 2.35, 0,
-    ]);
+export default defineSlide(
+  { title: 'Give words a little motion', titleVisible: false },
+  async (s) => {
+    // Text keeps the heading morph; the slide supplies its style and alignment.
+    const heading = new Text({
+      text: s.title.getText(),
+      fontSize: s.theme.titleSize,
+      fontFamily: s.theme.fontFamily,
+      fontWeight: 'bold',
+      color: s.theme.colors.text,
+    });
     const sentence = new Text({
       text: 'One letter. One word. One idea.',
       fontSize: 34,
-      color: '#58c4dd',
-    }).shift([0, 0.4, 0]);
+      fontFamily: s.theme.fontFamily,
+      color: s.theme.colors.accent,
+    }).moveTo([0, 0.4, 0]);
     const caption = new Text({
       text: 'Write a heading · reveal letters · fade in a caption',
       fontSize: 23,
-      color: '#b8c2d1',
-    }).shift([0, -1.25, 0]);
+      fontFamily: s.theme.fontFamily,
+      color: s.theme.colors.muted,
+    }).moveTo([0, -1.25, 0]);
+    const points = s.bullets([
+      'Reveal one idea at a time.',
+      'Let each line settle before the next.',
+      'Highlight the point to remember.',
+    ]);
+    points.item(2).setColor(s.theme.colors.accent);
 
-    await scene.step(
+    await s.step(
       {
         id: 'reveal',
         title: 'Three ways to introduce text',
@@ -35,30 +48,15 @@ export default {
           'Write reveals the heading; the sentence arrives letter by letter; the caption fades in.',
       },
       async () => {
-        await scene.play(new Write(heading, { duration: 1 }));
-        await scene.play(new AddTextLetterByLetter(sentence, { duration: 1.8 }));
-        await scene.play(new FadeIn(caption, { duration: 0.7 }));
+        heading.moveTo(s.title.getLeft(), LEFT);
+        await s.write(heading, { duration: 1 });
+        await s.play(new AddTextLetterByLetter(sentence, { duration: 1.8 }));
+        await s.play(new FadeIn(caption, { duration: 0.7 }));
       },
     );
-
-    const nextHeading = new Text({ text: 'Build a list, then add emphasis', fontSize: 44 }).shift([
-      0, 2.35, 0,
-    ]);
-    const items = [
-      '• Reveal one idea at a time.',
-      '• Let each line settle before the next.',
-      '• Highlight the point to remember.',
-    ].map((text, index) =>
-      new Text({ text, fontSize: 30, color: index === 2 ? '#58c4dd' : '#ffffff' }).moveTo([
-        0,
-        0.85 - index * 1.05,
-        0,
-      ]),
-    );
-    // Align the list by its left edge even though the lines have different lengths.
-    items.forEach((item) => item.alignTo([-4, 0, 0], LEFT));
-
-    await scene.step(
+    const nextHeading = heading.copy().setText('Build a list, then add emphasis');
+    nextHeading.moveTo(heading.getLeft(), LEFT);
+    await s.step(
       {
         id: 'bullets',
         title: 'Staggered bullets and emphasis',
@@ -66,19 +64,19 @@ export default {
           'The heading transforms, lines slide and fade in with staggered starts, and the last line is emphasized.',
       },
       async () => {
-        await scene.play(
+        await s.play(
           new ReplacementTransform(heading, nextHeading),
           new FadeOut(sentence),
           new FadeOut(caption),
         );
-        await scene.play(
+        await s.play(
           new LaggedStart(
-            items.map((item) => new FadeIn(item, { shift: [0.4, 0, 0], duration: 0.7 })),
+            points.items.map((item) => new FadeIn(item, { shift: [0.4, 0, 0], duration: 0.7 })),
             { lagRatio: 0.65 },
           ),
         );
-        await scene.play(new Indicate(items[2], { scaleFactor: 1.06, duration: 0.9 }));
+        await s.play(new Indicate(points.item(2), { scaleFactor: 1.06, duration: 0.9 }));
       },
     );
   },
-} satisfies SceneDefinition;
+);
