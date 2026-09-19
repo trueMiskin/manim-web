@@ -28,6 +28,8 @@ import * as THREE from 'three';
 interface Camera2DLike {
   frameWidth: number;
   frameHeight: number;
+  readonly authoredFrameWidth?: number;
+  readonly authoredFrameHeight?: number;
   position: THREE.Vector3;
   moveTo(point: [number, number, number]): void;
 }
@@ -47,9 +49,11 @@ export class Camera2DFrame extends VMobject {
   constructor(camera: Camera2DLike, isPrimary = true) {
     super();
     this._camera = camera;
-    this._isPrimary = isPrimary;
-    this._baseFrameWidth = camera.frameWidth;
-    this._baseFrameHeight = camera.frameHeight;
+    // Building the invisible frame must not push its default transform into
+    // the camera before the camera's existing pose has been copied.
+    this._isPrimary = false;
+    this._baseFrameWidth = camera.authoredFrameWidth ?? camera.frameWidth;
+    this._baseFrameHeight = camera.authoredFrameHeight ?? camera.frameHeight;
 
     // Invisible — the frame never renders on screen
     this.opacity = 0;
@@ -79,6 +83,7 @@ export class Camera2DFrame extends VMobject {
       const pos = camera.position;
       this.position.set(pos.x, pos.y, 0);
     }
+    this._isPrimary = isPrimary;
   }
 
   // ── Sync helpers ──────────────────────────────────────────────
