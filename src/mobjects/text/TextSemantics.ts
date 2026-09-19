@@ -121,33 +121,55 @@ export function semanticOpacity(mobject: Mobject): number {
   return opacity;
 }
 
+/** Find the end of a matching unit while balancing ordinary nested braces. */
+function matchingGroupEnd(source: string, contentStart: number): number {
+  let index = contentStart;
+  let depth = 0;
+  while (index < source.length) {
+    if (source[index] === '\\') {
+      index += 2;
+      continue;
+    }
+    if (depth === 0 && source.slice(index, index + 2) === '}}') break;
+    if (source[index] === '{') depth++;
+    else if (source[index] === '}') depth--;
+    index++;
+  }
+  return index;
+}
+
 /**
  * Parse Manim's explicit {{...}} matching units while retaining ungrouped text.
+ * Only top-level groups outside command arguments are matching units.
  * Ordinary TeX braces within a unit are balanced and escaped braces are ignored.
+ * @post result.length >= 1
  */
 export function splitTexGroups(source: string): string[] {
   const parts: string[] = [];
   let plainStart = 0;
   let index = 0;
+  let braceDepth = 0;
   while (index < source.length - 1) {
-    if (source.slice(index, index + 2) !== '{{' || source[index - 1] === '\\') {
+    if (source[index] === '\\') {
+      index += 2;
+      continue;
+    }
+    // A command, script operator, or preceding argument consumes the next
+    // group as TeX syntax, even when that group contains another brace pair.
+    const isMarker =
+      braceDepth === 0 &&
+      source.slice(index, index + 2) === '{{' &&
+      !/(?:\\[a-zA-Z]+\*?|[_^}\]])\s*$/.test(source.slice(plainStart, index));
+    if (!isMarker) {
+      if (source[index] === '{') braceDepth++;
+      else if (source[index] === '}') braceDepth--;
       index++;
       continue;
     }
     const start = index;
     index += 2;
     const contentStart = index;
-    let depth = 0;
-    while (index < source.length) {
-      if (source[index] === '\\') {
-        index += 2;
-        continue;
-      }
-      if (depth === 0 && source.slice(index, index + 2) === '}}') break;
-      if (source[index] === '{') depth++;
-      else if (source[index] === '}') depth--;
-      index++;
-    }
+    index = matchingGroupEnd(source, contentStart);
     if (index >= source.length) return [source];
     if (start > plainStart) parts.push(source.slice(plainStart, start));
     parts.push(source.slice(contentStart, index));

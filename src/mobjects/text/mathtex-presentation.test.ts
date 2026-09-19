@@ -19,6 +19,35 @@ function leafCount(object: VMobject): number {
 }
 
 describe('semantic math presentation', () => {
+  // MIGRATION: nested argument braces remain render input, while top-level
+  // matching markers select complete fragments without rewriting that input.
+  it('retains ordinary TeX argument groups beside explicit matching units', async () => {
+    const source = String.raw`\frac{{x}}{{y}} + {{z}}`;
+    const math = new MathTex({ latex: source });
+    await math.waitForRender();
+    expect(math.getLatex()).toBe(source);
+    expect(math.getSemanticTextRuns().map((run) => run.text)).toEqual([
+      String.raw`\frac{{x}}{{y}} + `,
+      'z',
+    ]);
+    const reference = await renderLatexToSVG(source);
+    expect(leafCount(math)).toBe(leafCount(reference.vmobjectGroup));
+    expect(reference.svgString).not.toContain('data-mml-node="merror"');
+    reference.vmobjectGroup.dispose();
+  });
+
+  // MIGRATION: text-mode wrapping never introduces new matching boundaries.
+  it('renders and copies a text-mode group without reparsing its wrapper', async () => {
+    const tex = new Tex({ latex: '{x}' });
+    await tex.waitForRender();
+    expect(tex.getLatex()).toBe(String.raw`\text{{x}}`);
+    expect(tex.getMatchingParts()).toHaveLength(1);
+    const copy = tex.copy();
+    await copy.waitForRender();
+    expect(copy.getLatex()).toBe(tex.getLatex());
+    expect(leafCount(copy)).toBe(leafCount(tex));
+  });
+
   // MIGRATION: Group normalization before readiness preserves asynchronous
   // formula placement even when other siblings already have geometry.
   it('keeps pending formula placement inside a populated group', async () => {
@@ -54,6 +83,7 @@ describe('semantic math presentation', () => {
     const copy = math.copy();
     const count = leafCount(copy);
     await copy.waitForRender();
+    expect(copy.getLatex()).toBe(math.getLatex());
     expect(leafCount(copy)).toBe(count);
     expect(copy.getSemanticTextRuns().map((run) => run.text)).toEqual(['x', '+', 'x']);
     const tex = new Tex({ latex: '{{Differentiable}} {{ray tracing}}' });
