@@ -30,6 +30,24 @@ async function settled(page: Page): Promise<void> {
   });
 }
 
+// MIGRATION: opening speaker view initializes the wall clock and advances the
+// elapsed timer; resetting the timer starts a new interval without stopping it.
+test('speaker view updates its clock and elapsed timer', async ({ page }) => {
+  await ready(page, basic);
+  await settled(page);
+  const popup = page.waitForEvent('popup');
+  await page.keyboard.press('s');
+  const speaker = await popup;
+  const clock = speaker.locator('.clock-value');
+  const timer = speaker.locator('.timer');
+  await expect(clock).not.toHaveText('0:00 AM');
+  await expect(timer).not.toHaveText('00:00:00');
+  await speaker.locator('.speaker-controls-time').click();
+  await expect(timer).toHaveText('00:00:00');
+  await expect(timer).not.toHaveText('00:00:00');
+  await speaker.close();
+});
+
 // MIGRATION: replacement steps show only their authored content and restore
 // earlier geometry after completed or interrupted playback.
 test('basic text replaces previous content and restores it through interrupted replay', async ({
