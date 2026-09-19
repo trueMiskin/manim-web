@@ -4,7 +4,7 @@ import { defineSlide } from 'manim-web/reveal';
 const accent = '#58c4dd';
 
 export default defineSlide(
-  { title: 'A quadratic example', theme: { colors: { accent } } },
+  { title: 'A quadratic example', theme: { titleAlign: 'left', colors: { accent } } },
   async (s) => {
     const [content, figure] = s.columns([3, 2]);
     const intro = content.paragraph("For $f(x)=x^2$, the derivative is $f'(x)=2x$.");

@@ -4,7 +4,6 @@ import {
   FadeOut,
   Indicate,
   LaggedStart,
-  LEFT,
   ReplacementTransform,
   Text,
 } from 'manim-web';
@@ -48,14 +47,14 @@ export default defineSlide(
           'Write reveals the heading; the sentence arrives letter by letter; the caption fades in.',
       },
       async () => {
-        heading.moveTo(s.title.getLeft(), LEFT);
+        heading.moveTo(s.title.getCenter());
         await s.write(heading, { duration: 1 });
         await s.play(new AddTextLetterByLetter(sentence, { duration: 1.8 }));
         await s.play(new FadeIn(caption, { duration: 0.7 }));
       },
     );
     const nextHeading = heading.copy().setText('Build a list, then add emphasis');
-    nextHeading.moveTo(heading.getLeft(), LEFT);
+    nextHeading.moveTo(heading.getCenter());
     await s.step(
       {
         id: 'bullets',

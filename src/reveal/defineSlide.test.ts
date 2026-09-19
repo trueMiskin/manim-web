@@ -45,7 +45,8 @@ function makePlayer(): Player {
 
 describe('content slide authoring', () => {
   // MIGRATION: titles obey the same authored-opacity restoration as body blocks,
-  // whether initially visible or introduced through an explicit animation.
+  // whether initially visible or introduced through an explicit animation;
+  // an omitted title alignment centers the title.
   it('restores a default-visible title after fading it out', async () => {
     const player = makePlayer();
     let title!: RichParagraph;
@@ -57,6 +58,7 @@ describe('content slide authoring', () => {
     });
     await player.sequence(definition.build);
     const expected = title.getBounds();
+    expect(title.getCenter()[0]).toBeCloseTo(0);
     player.seekCheckpoint('out');
     expect(player.inspectText()).toHaveLength(0);
     player.seekCheckpoint('return');
@@ -84,7 +86,7 @@ describe('content slide authoring', () => {
           duration: 0.1,
           fontUrl: '/body.ttf',
           titleFontFamily: 'serif',
-          titleAlign: 'center',
+          titleAlign: undefined,
         },
       },
       async (s) => {
@@ -184,15 +186,18 @@ describe('content slide authoring', () => {
 
   // MIGRATION: column weights determine disjoint bounds while grouping for
   // placement preserves the relative geometry and identities of every child.
+  // A left-aligned title shares the prose column's left edge.
   it('lays out wrapped content beside a diagram without reparenting its children', async () => {
     const player = makePlayer();
+    let title!: RichParagraph;
     let prose!: RichParagraph;
     let diagram!: VGroup;
     let leftCircle!: Circle;
     let rightCircle!: Circle;
     const definition = defineSlide(
-      { title: 'Two views', theme: { colors: { accent: '#ff8800' } } },
+      { title: 'Two views', theme: { titleAlign: 'left', colors: { accent: '#ff8800' } } },
       async (s) => {
+        title = s.title;
         const [content, figure] = s.columns([3, 2]);
         prose = content.paragraph(
           'A longer explanation wraps inside its own column and leaves the diagram clear.',
@@ -206,6 +211,7 @@ describe('content slide authoring', () => {
     );
     await player.sequence(definition.build);
     player.seekCheckpoint('both');
+    expect(title.getBounds().min.x).toBeCloseTo(prose.getBounds().min.x);
     expect(prose.getLineCount()).toBeGreaterThan(1);
     expect(prose.getBounds().max.x).toBeLessThan(diagram.getBounds().min.x);
     expect(diagram.children).toEqual([leftCircle, rightCircle]);

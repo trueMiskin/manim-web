@@ -1,6 +1,6 @@
 import type { Mobject } from '../core/Mobject';
 import { prepareMobjects } from '../core/readiness';
-import type { SlideTheme } from './slideTheme';
+import { DEFAULT_SLIDE_THEME, type SlideTheme } from './slideTheme';
 
 export type SlideAlignment = 'left' | 'center' | 'right';
 
@@ -122,10 +122,11 @@ export class SlideLayout {
     if (titleBounds.max.x - titleBounds.min.x > this.root.width + 1e-6)
       throw new Error('Slide title exceeds the available width. Shorten it or reduce titleSize.');
     const titleWidth = titleBounds.max.x - titleBounds.min.x;
+    const titleAlign = this.theme.titleAlign ?? DEFAULT_SLIDE_THEME.titleAlign;
     const titleOffset =
-      this.theme.titleAlign === 'center'
+      titleAlign === 'center'
         ? (this.root.width - titleWidth) / 2
-        : this.theme.titleAlign === 'right'
+        : titleAlign === 'right'
           ? this.root.width - titleWidth
           : 0;
     this.title.shift([left + titleOffset - titleBounds.min.x, top - titleBounds.max.y, 0]);

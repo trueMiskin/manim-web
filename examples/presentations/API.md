@@ -34,7 +34,7 @@ Declare every layout block before the first step or animation. Preparation waits
 
 ### Typography and colors
 
-The default theme supplies sizes, spacing, and colors. Override only what the lesson needs:
+The default theme centers slide titles and left-aligns paragraphs and bullets. Set `theme: { titleAlign: 'left' }` for a title aligned with the body, as in the lesson example. Override only the sizes, spacing, and colors the presentation needs:
 
 ```ts
 defineSlide(
