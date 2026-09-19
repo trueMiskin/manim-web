@@ -1,4 +1,5 @@
 import type { SlideAlignment } from './slideLayout';
+import { darkColors, type ColorPalette } from './palettes';
 
 /** Shared typography and spacing for content authored with defineSlide. */
 export interface SlideTheme {
@@ -19,13 +20,7 @@ export interface SlideTheme {
   itemGap: number;
   columnGap: number;
   duration: number;
-  colors: {
-    background: string;
-    text: string;
-    muted: string;
-    accent: string;
-    secondary: string;
-  };
+  colors: ColorPalette;
 }
 
 export type SlideThemeOptions = Partial<Omit<SlideTheme, 'colors'>> & {
@@ -49,13 +44,7 @@ export const DEFAULT_SLIDE_THEME: Readonly<ResolvedSlideTheme> = Object.freeze({
   itemGap: 0.22,
   columnGap: 0.7,
   duration: 0.65,
-  colors: Object.freeze({
-    background: '#10141c',
-    text: '#f3f4f6',
-    muted: '#b8c2d1',
-    accent: '#58c4dd',
-    secondary: '#f4cf6b',
-  }),
+  colors: darkColors,
 });
 
 /** Resolve a palette role (such as "accent") or retain an ordinary CSS color. */
@@ -66,14 +55,17 @@ export function slideColor(theme: SlideTheme, color = 'text'): string {
 }
 
 /** @post result.colors !== DEFAULT_SLIDE_THEME.colors */
-export function resolveSlideTheme(options: SlideThemeOptions = {}): ResolvedSlideTheme {
+export function resolveSlideTheme(
+  options: SlideThemeOptions = {},
+  colors: ColorPalette = darkColors,
+): ResolvedSlideTheme {
   const theme = {
     ...DEFAULT_SLIDE_THEME,
     ...options,
     titleAlign: options.titleAlign ?? DEFAULT_SLIDE_THEME.titleAlign,
     captionSize: options.captionSize ?? DEFAULT_SLIDE_THEME.captionSize,
     captionGap: options.captionGap ?? DEFAULT_SLIDE_THEME.captionGap,
-    colors: { ...DEFAULT_SLIDE_THEME.colors, ...options.colors },
+    colors: Object.freeze({ ...colors, ...options.colors }) as ColorPalette,
   };
   if (!['left', 'center', 'right'].includes(theme.titleAlign))
     throw new Error('Slide titleAlign must be left, center, or right.');

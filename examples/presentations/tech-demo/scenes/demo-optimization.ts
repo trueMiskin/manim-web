@@ -1,7 +1,7 @@
 import { Dot, FadeIn, Group, UpdateFromAlphaFunc, VMobject, linear } from '../../../../src';
 import { defineSlide } from '../../../../src/reveal';
 import optimization from '../data/optimization.json';
-import { C, label, TECH_THEME } from './common';
+import { label, TECH_THEME } from './common';
 import {
   changeField,
   fieldForeground,
@@ -9,6 +9,7 @@ import {
   heatmap,
   makeTable,
   point,
+  fieldColors,
   text,
   vectorField,
 } from './numerical-common';
@@ -30,7 +31,7 @@ export default defineSlide(
     let state = fieldState(optimization.initialStateId);
     let image = heatmap(state);
     const vectors = vectorField(state);
-    const trace = new VMobject().setColor(C.green).setStrokeWidth(4).setFillOpacity(0);
+    const trace = new VMobject().setColor(fieldColors.green).setStrokeWidth(4).setFillOpacity(0);
 
     await s.step(
       {
@@ -42,7 +43,12 @@ export default defineSlide(
         await s.play(
           new FadeIn(s.title),
           new FadeIn(
-            label('One trajectory drives the marker, trail and field', 22, C.muted, [0, -2.7, 0]),
+            label(
+              'One trajectory drives the marker, trail and field',
+              22,
+              s.colors.muted,
+              [0, -2.7, 0],
+            ),
           ),
           new FadeIn(table.base),
         );

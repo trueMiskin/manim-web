@@ -89,6 +89,11 @@ export class SlideRegion {
     return this.layout.theme;
   }
 
+  /** Inherited palette colors, including this slide's explicit color overrides. */
+  get colors(): SlideTheme['colors'] {
+    return this.theme.colors;
+  }
+
   private textOptions(text: string, options: SlideTextOptions): RichParagraphOptions {
     return {
       text,

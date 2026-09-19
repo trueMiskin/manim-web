@@ -8,7 +8,8 @@ import {
   crossVec,
   dotVec,
 } from '../../../../src/utils/vectors';
-import { C } from './common';
+import type { ColorPalette } from '../../../../src/reveal';
+import { techDemoPalettes } from '../palettes';
 import { resamplePointList3D } from '../../../../src/core/VMobjectTransformAlignment';
 
 export type LensType = 'convex' | 'thick_convex' | 'concave';
@@ -25,7 +26,7 @@ export const hallVertices: Vector3Tuple[] = [
 ];
 
 /** Source main.py:756–797. Shared-anchor cubic chains use the corrected core arcs. */
-export function makeLens(type: LensType): VMobject {
+export function makeLens(type: LensType, colors: ColorPalette = techDemoPalettes.dark): VMobject {
   const angle =
     type === 'thick_convex' ? Math.PI / 2 : type === 'concave' ? Math.PI / 4 : Math.PI / 3.5;
   // Match top cap, right side, bottom cap, and left side across lens types.
@@ -54,15 +55,19 @@ export function makeLens(type: LensType): VMobject {
     return index ? world.slice(1) : world;
   });
   parts.forEach((part) => part.dispose());
-  return new VMobject().setPoints(points).setColor(C.cyan).setStrokeWidth(2).setFill(C.cyan, 0.2);
+  return new VMobject()
+    .setPoints(points)
+    .setColor(colors.cyan)
+    .setStrokeWidth(2)
+    .setFill(colors.cyan, 0.2);
 }
 
-export function makeConcertHall(): VMobject {
+export function makeConcertHall(colors: ColorPalette): VMobject {
   return new VMobject()
     .setPointsAsCorners(hallVertices)
-    .setColor(C.text)
+    .setColor(colors.text)
     .setStrokeWidth(2.5)
-    .setFill(C.card, 0.4);
+    .setFill(colors.card, 0.4);
 }
 
 /** Source's illustrative prescribed-focal-distance construction, not a new optical solver. */
@@ -106,15 +111,15 @@ export function lensRayCoordinates(type: LensType): Vector3Tuple[][] {
   });
 }
 
-export function polyline(points: Vector3Tuple[], color = '#FFFF00', width = 1.5): VMobject {
+export function polyline(points: Vector3Tuple[], color: string, width = 1.5): VMobject {
   return new VMobject()
     .setPointsAsCorners(points)
     .setColor(color)
     .setStrokeWidth(width)
     .setFillOpacity(0);
 }
-export function lensRays(type: LensType): VGroup {
-  return new VGroup(...lensRayCoordinates(type).map((points) => polyline(points)));
+export function lensRays(type: LensType, color: string): VGroup {
+  return new VGroup(...lensRayCoordinates(type).map((points) => polyline(points, color)));
 }
 
 /** Source main.py:918–980; all hall segments and rays lie in the XY plane. */

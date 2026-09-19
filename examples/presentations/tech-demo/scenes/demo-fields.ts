@@ -1,6 +1,6 @@
 import { Create, FadeIn, LaggedStart } from '../../../../src';
 import { defineSlide } from '../../../../src/reveal';
-import { C, label, TECH_THEME } from './common';
+import { label, TECH_THEME } from './common';
 import {
   changeField,
   fieldForeground,
@@ -21,7 +21,12 @@ export default defineSlide(
     let image = heatmap(state);
     const vectors = vectorField(state);
     const title = s.title;
-    const caption = label('Coverage, gradients and smooth transitions', 22, C.muted, [0, -2.7, 0]);
+    const caption = label(
+      'Coverage, gradients and smooth transitions',
+      22,
+      s.colors.muted,
+      [0, -2.7, 0],
+    );
 
     await s.step(
       {

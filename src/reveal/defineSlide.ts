@@ -7,7 +7,7 @@ import { FadeOut } from '../animation/fading/FadeOut';
 import { Write } from '../animation/creation/Create';
 import type { SlideOptions } from '../animation/MasterTimeline';
 import type { RecordingScene } from '../player/RecordingScene';
-import type { SceneDefinition } from './types';
+import type { BoundSceneDefinition, SceneBuildContext, SceneDefinition } from './types';
 import { SlideBullets, SlideRegion } from './slideBlocks';
 import { SlideLayout } from './slideLayout';
 import { resolveSlideTheme, type SlideTheme, type SlideThemeOptions } from './slideTheme';
@@ -173,13 +173,28 @@ export class SlideContext extends SlideRegion {
 export function defineSlide(
   options: ContentSlideOptions,
   build: (slide: SlideContext) => Promise<void>,
-): SceneDefinition {
-  const theme = resolveSlideTheme(options.theme);
+): BoundSceneDefinition {
+  return createContentSlide(options, build);
+}
+
+function createContentSlide(
+  options: ContentSlideOptions,
+  build: (slide: SlideContext) => Promise<void>,
+  inherited?: SceneBuildContext,
+): BoundSceneDefinition {
+  resolveSlideTheme(options.theme);
   if (!options.title.trim()) throw new Error('A content slide needs a title.');
   return {
-    options: { backgroundColor: theme.colors.background, ...options.options },
+    get options() {
+      return {
+        backgroundColor: resolveSlideTheme(options.theme, inherited?.colors).colors.background,
+        ...options.options,
+      };
+    },
     createScene: options.createScene,
-    async build(scene) {
+    withPalette: (context) => createContentSlide(options, build, context),
+    async build(scene, paletteContext = inherited) {
+      const theme = resolveSlideTheme(options.theme, paletteContext?.colors);
       const title = new RichParagraph({
         text: options.title,
         width: scene.camera.frameWidth - 2 * theme.margin,

@@ -1,9 +1,11 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { manimPresentation } from './ManimPresentation';
+import * as compilation from './compile';
 import { blankSlide, markdownSlide, presentation, sceneSlides, topic } from './authoring';
 import type { PresentationAssets, RevealDeck, RevealEvent, SceneDefinition } from './types';
 import type { Slide } from '../animation/MasterTimeline';
+import { darkColors, definePalettes, lightColors } from './palettes';
 
 const { players, FakePlayer } = vi.hoisted(() => {
   const players: FakePlayer[] = [];
@@ -164,6 +166,151 @@ afterEach(() => {
 });
 
 describe('Reveal presentation integration', () => {
+  // MIGRATION: changing a deck's palette preserves checkpoint identity and
+  // updates live content, previews and printing together; failed rebuilds and
+  // changes to another presentation cannot change the committed palette.
+  it('switches scoped palettes and retains the previous content if rebuilding fails', async () => {
+    const palettes = definePalettes({
+      dark: { ...darkColors, ray: '#00ffff' },
+      light: { ...lightColors, ray: '#003b8e' },
+    });
+    const seenColors: string[] = [];
+    const scene: SceneDefinition = {
+      async build(_scene, { colors } = { colors: palettes.dark }) {
+        seenColors.push(colors.ray);
+      },
+    };
+    const definition = presentation({
+      title: 'Test presentation',
+      palettes,
+      palette: 'dark',
+      topics: ['first', 'second'].map((id) =>
+        topic(id, [sceneSlides('shapes', async () => scene)]),
+      ),
+    });
+    const initial = { ...assets(), palette: { name: 'dark', colors: palettes.dark } };
+    const { deck, root, navigate } = createDeck();
+    root.style.color = 'red';
+    root.style.setProperty('--r-main-color', 'orange');
+    const mutableDefinition = {
+      ...definition,
+      palettes: { dark: { ...palettes.dark }, light: { ...palettes.light } },
+    };
+    const plugin = manimPresentation(mutableDefinition, { assets: initial });
+    mutableDefinition.palettes.light.ray = '#ff0000';
+    await plugin.init(deck);
+    navigate(1, 1);
+    await flush();
+    const currentId = deck.getCurrentSlide().id;
+    const selector = document.querySelector<HTMLSelectElement>('[aria-label="Color palette"]')!;
+    expect(selector.value).toBe('dark');
+    expect(seenColors.at(-1)).toBe(palettes.dark.ray);
+
+    const updated = { ...assets(), palette: { name: 'light', colors: palettes.light } };
+    for (const scene of Object.values(updated.scenes))
+      for (const snapshot of Object.values(scene.snapshots))
+        snapshot.image = 'data:image/png;base64,bA==';
+    const compile = vi.spyOn(compilation, 'compilePresentation').mockResolvedValue(updated);
+    await plugin.setPalette('light');
+    expect(plugin.palette).toBe('light');
+    expect(definition.palette).toBe('dark');
+    expect(seenColors.at(-1)).toBe(palettes.light.ray);
+    expect(deck.getCurrentSlide().id).toBe(currentId);
+    expect(players.at(-1)!.calls.at(-1)).toBe('seek:two:end');
+    expect(players.at(-1)!.isPlaying).toBe(false);
+    expect(selector.value).toBe('light');
+    expect(selector.disabled).toBe(false);
+    expect(root.style.getPropertyValue('--manim-text')).toBe(palettes.light.text);
+    expect(
+      document.querySelector<HTMLElement>('.manim-handout')!.style.getPropertyValue('--manim-ray'),
+    ).toBe(palettes.light.ray);
+    expect(plugin.exportAssets()).toEqual(updated);
+    for (const image of document.querySelectorAll<HTMLImageElement>('.manim-snapshot img'))
+      expect(image.src).toBe('data:image/png;base64,bA==');
+
+    await expect(plugin.setPalette('missing')).rejects.toThrow();
+    await plugin.setPalette('light');
+    expect(compile).toHaveBeenCalledTimes(1);
+    compile.mockRejectedValue(new Error('Could not render the new palette'));
+    const previous = players.at(-1)!;
+    await expect(plugin.setPalette('dark')).rejects.toThrow('Could not render the new palette');
+    expect(plugin.palette).toBe('light');
+    expect(plugin.ready).toBe(true);
+    expect(previous.disposed).toBe(false);
+    expect(plugin.exportAssets()).toEqual(updated);
+    expect(selector.value).toBe('light');
+    expect(selector.disabled).toBe(false);
+
+    const other = createDeck();
+    const otherPlugin = manimPresentation(definition, { assets: initial, controls: false });
+    await otherPlugin.init(other.deck);
+    await flush();
+    expect(otherPlugin.palette).toBe('dark');
+    expect(other.root.style.getPropertyValue('--manim-ray')).toBe(palettes.dark.ray);
+    expect(root.style.getPropertyValue('--manim-ray')).toBe(palettes.light.ray);
+    otherPlugin.destroy();
+    plugin.destroy();
+    expect(root.style.color).toBe('red');
+    expect(root.style.getPropertyValue('--r-main-color')).toBe('orange');
+    expect(root.style.getPropertyValue('--manim-ray')).toBe('');
+  });
+
+  // MIGRATION: refreshing appearance preserves checkpoint identity, updates all
+  // previews/print pages, and cannot attach content after the owner is destroyed.
+  it('refreshes snapshots and live playback at the current checkpoint', async () => {
+    const scene: SceneDefinition = { build: async () => {} };
+    const definition = presentation({
+      title: 'Test presentation',
+      topics: ['first', 'second'].map((id) =>
+        topic(id, [sceneSlides('shapes', async () => scene, { background: '#000000' })]),
+      ),
+    });
+    const { deck, navigate, slides } = createDeck();
+    const plugin = manimPresentation(definition, { assets: assets() });
+    await plugin.init(deck);
+    navigate(1, 1);
+    await flush();
+    const previous = players.at(-1)!;
+    const currentId = deck.getCurrentSlide().id;
+    const updated = assets();
+    for (const scene of Object.values(updated.scenes)) {
+      for (const snapshot of Object.values(scene.snapshots))
+        snapshot.image = 'data:image/png;base64,bA==';
+    }
+    for (const topic of definition.topics) topic.slides[0].background = '#ffffff';
+    const compile = vi.spyOn(compilation, 'compilePresentation').mockResolvedValue(updated);
+    await plugin.refresh();
+    await flush();
+    expect(deck.getCurrentSlide().id).toBe(currentId);
+    expect(deck.getCurrentSlide().style.backgroundColor).toBe('#ffffff');
+    expect(previous.disposed).toBe(true);
+    expect(players.at(-1)!.calls.at(-1)).toBe('seek:two:end');
+    expect(players.at(-1)!.isPlaying).toBe(false);
+    expect(plugin.exportAssets()).toEqual(updated);
+    expect(document.querySelectorAll('.manim-handout')).toHaveLength(1);
+    for (const image of document.querySelectorAll<HTMLImageElement>('.manim-snapshot img')) {
+      expect(image.src).toBe('data:image/png;base64,bA==');
+    }
+    let finish!: (result: PresentationAssets) => void;
+    compile.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const refreshing = plugin.refresh();
+    await flush();
+    await expect(plugin.refresh()).rejects.toThrow('not ready to refresh');
+    plugin.destroy();
+    const content = slides.innerHTML;
+    finish(updated);
+    await refreshing;
+    expect(plugin.ready).toBe(false);
+    expect(slides.querySelector('.manim-live')).toBeNull();
+    expect(document.querySelector('.manim-handout')).toBeNull();
+    expect(document.querySelector('.manim-loading')).toBeNull();
+    expect(slides.innerHTML).toBe(content);
+  });
+
   // MIGRATION: pending forward navigation hides completed posters synchronously,
   // and cancellation restores them without allowing stale loads to reveal one.
   it('hides completed previews until the destination starts playing', async () => {

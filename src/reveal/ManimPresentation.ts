@@ -4,6 +4,7 @@ import { preloadTextFonts } from '../mobjects/text/TextFont';
 import { logger } from '../utils/logger';
 import { presentation } from './authoring';
 import {
+  compilePresentation,
   createScenePlayer,
   loadPresentationAssets,
   loadScene,
@@ -11,7 +12,14 @@ import {
   sceneKey,
 } from './compile';
 import { prepareImages } from './content';
-import { buildPresentationDocument, presentationStyles } from './document';
+import {
+  applyPresentationPalette,
+  buildPresentationDocument,
+  preservePresentationPalette,
+  presentationStyles,
+} from './document';
+import { presentationControls } from './controls';
+import { resolvePresentationPalette } from './palettes';
 import { PrintLifecycle } from './lifecycle';
 import type {
   PresentationAssets,
@@ -51,6 +59,8 @@ export class ManimPresentation {
   private _style?: HTMLStyleElement;
   private _loading?: HTMLElement;
   private _controls?: HTMLElement;
+  private _paletteControl?: HTMLSelectElement;
+  private _restorePalette?: () => void;
   private _printing?: PrintLifecycle;
   private _generation = 0;
   private _disposed = false;
@@ -61,12 +71,13 @@ export class ManimPresentation {
   private _staticView = false;
   private _listeners: Array<[string, (event: RevealEvent) => void]> = [];
   private _preparation: Promise<void> = Promise.resolve();
+  private _refreshing = false;
 
   constructor(
-    private readonly _definition: PresentationDefinition,
+    private _definition: PresentationDefinition,
     private readonly _options: PresentationPluginOptions = {},
   ) {
-    presentation(_definition);
+    this._definition = presentation(_definition);
   }
 
   get routes(): readonly PresentationRoute[] {
@@ -74,6 +85,10 @@ export class ManimPresentation {
   }
   get player(): Player | undefined {
     return this._live?.player;
+  }
+
+  get palette(): string | undefined {
+    return resolvePresentationPalette(this._definition)?.name;
   }
 
   /**
@@ -88,6 +103,7 @@ export class ManimPresentation {
   /** Reveal waits for this promise before announcing its own ready event. */
   async init(deck: RevealDeck): Promise<void> {
     this._deck = deck;
+    this._restorePalette = preservePresentationPalette(this._definition, deck.getRevealElement());
     this._initialHash = location.hash.length > 1;
     const query = new URLSearchParams(location.search);
     this._staticView =
@@ -99,6 +115,7 @@ export class ManimPresentation {
     this._loading.className = 'manim-loading';
     this._loading.setAttribute('role', 'status');
     this._loading.textContent = 'Preparing presentation…';
+    this._applyPalette();
     document.body.append(this._loading);
     try {
       this._assets = await loadPresentationAssets(this._options.assets, this._definition);
@@ -115,6 +132,7 @@ export class ManimPresentation {
       );
       this._routes = routes;
       this._handout = handout;
+      this._applyPalette();
       document.body.append(handout);
       await Promise.all([prepareImages(handout), this._prepareBackgrounds()]);
       if (this._disposed) return;
@@ -179,22 +197,29 @@ export class ManimPresentation {
 
   private _addControls(): void {
     if (this._options.controls === false) return;
-    this._controls = document.createElement('nav');
-    this._controls.className = 'manim-controls';
-    this._controls.setAttribute('aria-label', 'Presentation controls');
-    const actions: Array<[string, () => void]> = [
-      ['Play / pause', () => this.togglePlayback()],
-      ['Replay', () => this.replay()],
-      ['Print', () => this.print()],
-    ];
-    for (const [label, action] of actions) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.textContent = label;
-      button.addEventListener('click', action);
-      this._controls.append(button);
-    }
+    const controls = presentationControls(
+      this._definition,
+      [
+        ['Play / pause', () => this.togglePlayback()],
+        ['Replay', () => this.replay()],
+        ['Print', () => this.print()],
+      ],
+      (name) => void this.setPalette(name).catch((error: unknown) => this._reportError(error)),
+    );
+    this._controls = controls.element;
+    this._paletteControl = controls.palette;
+    this._applyPalette();
     document.body.append(this._controls);
+  }
+
+  private _applyPalette(): void {
+    applyPresentationPalette(
+      this._definition,
+      this._deck!.getRevealElement(),
+      this._handout,
+      this._controls,
+      this._loading,
+    );
   }
 
   private _bind(event: string, listener: (event: RevealEvent) => void): void {
@@ -202,8 +227,8 @@ export class ManimPresentation {
     this._listeners.push([event, listener]);
   }
 
-  private _navigate(allowAnimation = true): void {
-    if (this._staticView) return;
+  private async _navigate(allowAnimation = true): Promise<void> {
+    if (!this.ready || this._staticView) return;
     const indices = this._deck!.getIndices();
     const route = this._routes.find(
       (candidate) => candidate.h === indices.h && candidate.v === (indices.v ?? 0),
@@ -226,7 +251,7 @@ export class ManimPresentation {
     previous?.element
       .querySelectorAll<HTMLMediaElement>('audio, video')
       .forEach((media) => media.pause());
-    void this._activate(route, generation, play)
+    await this._activate(route, generation, play)
       .catch((error: unknown) => {
         if (generation === this._generation && !this._disposed) this._reportError(error);
       })
@@ -240,11 +265,10 @@ export class ManimPresentation {
     previous: PresentationRoute | undefined,
     allowAnimation: boolean,
   ): boolean {
+    if (this._restoreNext) return false;
     if (!previous)
       return !this._initialHash && route.ordinal === 0 && route.checkpoint?.autoNext === true;
-    return (
-      allowAnimation && !this._restoreNext && !this._overview && route.ordinal > previous.ordinal
-    );
+    return allowAnimation && !this._overview && route.ordinal > previous.ordinal;
   }
 
   private async _activate(
@@ -260,7 +284,7 @@ export class ManimPresentation {
     if (this._live?.key !== key) {
       this._disposeLive();
       const slide = route.slide;
-      const definition = await loadScene(slide);
+      const definition = await loadScene(slide, this._definition);
       if (generation !== this._generation || this._disposed) return;
       const preparation = this._preparation.then(async () => {
         if (generation !== this._generation || this._disposed) return;
@@ -395,6 +419,76 @@ export class ManimPresentation {
     return structuredClone(this._assets);
   }
 
+  /**
+   * Rebuild live content and print snapshots after changing authored appearance.
+   * Playback resumes paused at the current checkpoint's end.
+   * @pre this.ready === true
+   * @post this.ready === !this._disposed
+   */
+  refresh(): Promise<void> {
+    return this._refresh(this._definition);
+  }
+
+  /**
+   * Rebuild all slides and handouts using an authored color palette.
+   * @pre this.ready === true
+   * @post this.palette === name || this._disposed
+   */
+  async setPalette(name: string): Promise<void> {
+    if (!this.ready || this._refreshing)
+      throw new Error('The presentation is not ready to change palette.');
+    const definition = { ...this._definition, palette: name };
+    resolvePresentationPalette(definition);
+    if (name === this.palette) return;
+    await this._refresh(definition);
+  }
+
+  private async _refresh(definition: PresentationDefinition): Promise<void> {
+    if (!this.ready || this._refreshing)
+      throw new Error('The presentation is not ready to refresh.');
+    this._refreshing = true;
+    this.ready = false;
+    this.pause();
+    this._generation++;
+    this._loading!.textContent = 'Applying theme…';
+    document.body.append(this._loading!);
+    if (this._paletteControl) this._paletteControl.disabled = true;
+    try {
+      await this._preparation;
+      if (this._disposed) return;
+      const assets = await compilePresentation(definition);
+      if (this._disposed) return;
+      const slides = document.createElement('div');
+      const { routes, handout } = buildPresentationDocument(definition, assets, slides);
+      await prepareImages(handout);
+      if (this._disposed) return;
+      this._disposeLive();
+      this._definition = definition;
+      if (this._handout?.dataset.view) handout.dataset.view = this._handout.dataset.view;
+      this._deck!.getSlidesElement().replaceChildren(...slides.childNodes);
+      this._handout?.replaceWith(handout);
+      this._handout = handout;
+      this._assets = assets;
+      this._routes = routes;
+      this._route = undefined;
+      this._applyPalette();
+      this._deck!.sync();
+    } finally {
+      this._loading?.remove();
+      if (!this._disposed) {
+        this.ready = true;
+        this._route = undefined;
+        this._restoreNext = true;
+        await this._navigate(false);
+      }
+      this._refreshing = false;
+      if (this._paletteControl) {
+        this._paletteControl.disabled = false;
+        this._paletteControl.value = this.palette ?? '';
+      }
+    }
+  }
+
   private _reportError(error: unknown): void {
     this.error = error instanceof Error ? error.message : String(error);
     if (this._loading?.isConnected) this._loading.textContent = this.error;
@@ -419,6 +513,7 @@ export class ManimPresentation {
     this._style?.remove();
     this._loading?.remove();
     this._controls?.remove();
+    this._restorePalette?.();
     if (window.__MANIM_PRESENTATION__ === this) delete window.__MANIM_PRESENTATION__;
   }
 }

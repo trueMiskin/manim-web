@@ -1,8 +1,10 @@
 import { presentation, topic, sceneSlides, type SceneDefinition } from '../../../src/reveal';
-import { C, prepareSourceFonts } from './scenes/common';
+import { prepareSourceFonts } from './scenes/common';
+import { techDemoPalettes } from './palettes';
 
 export interface TechDemoOptions {
   topics?: readonly string[];
+  palette?: keyof typeof techDemoPalettes;
 }
 const modules = import.meta.glob('./scenes/demo-*.ts');
 const topics = [
@@ -19,6 +21,8 @@ const topics = [
 export function techDemo(options: TechDemoOptions = {}) {
   return presentation({
     title: 'manim-web tech demo',
+    palettes: techDemoPalettes,
+    palette: options.palette ?? 'dark',
     width: 1280,
     height: 720,
     topics: topics
@@ -27,22 +31,13 @@ export function techDemo(options: TechDemoOptions = {}) {
         topic(
           item.id,
           [
-            sceneSlides(
-              item.id,
-              async () => {
-                const load = modules[`./scenes/demo-${item.id}.ts`];
-                if (!load) throw new Error(`Missing tech demo scene: ${item.id}`);
-                const { default: scene } = (await load()) as { default: SceneDefinition };
-                return {
-                  ...scene,
-                  async build(recording) {
-                    await prepareSourceFonts();
-                    await scene.build(recording);
-                  },
-                };
-              },
-              { background: C.bg },
-            ),
+            sceneSlides(item.id, async () => {
+              const load = modules[`./scenes/demo-${item.id}.ts`];
+              if (!load) throw new Error(`Missing tech demo scene: ${item.id}`);
+              const { default: scene } = (await load()) as { default: SceneDefinition };
+              await prepareSourceFonts();
+              return scene;
+            }),
           ],
           { title: item.title },
         ),
