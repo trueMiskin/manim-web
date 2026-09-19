@@ -125,7 +125,7 @@ export class MathTex extends VGroup {
       // Multi-part mode: render the FULL expression as one MathJax call
       // for correct layout, then split VMobjects into parts by glyph count.
       this._isMultiPart = true;
-      this._latex = this._partLatex.join('');
+      this._latex = parts.sourceLatex;
       if (render)
         this._renderPromise = this._renderMultiPart(this._partLatex).catch((error: unknown) => {
           this._renderError = error instanceof Error ? error : new Error(String(error));
@@ -565,10 +565,8 @@ export class MathTex extends VGroup {
    * 3. Splitting the full expression's VMobjects into part groups by glyph count
    */
   private async _renderMultiPart(latexParts: string[]): Promise<void> {
-    const fullLatex = latexParts.join('');
-
     // Render the full expression as one unit (correct spacing & layout)
-    const fullResult = await renderLatexToSVG(fullLatex, {
+    const fullResult = await renderLatexToSVG(this._latex, {
       displayMode: this._displayMode,
       color: this._color,
       macros: this._macros,
@@ -710,6 +708,7 @@ export class MathTex extends VGroup {
       },
       false,
     );
+    copy._latex = this._latex;
     copy._sourceLatex = this._sourceLatex;
     copy._partColors = [...this._partColors];
     this._copyBaseAttributesInto(copy, { copyChildren: true });

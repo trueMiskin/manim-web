@@ -68,7 +68,8 @@ export class Tex extends MathTex {
     super(
       {
         ...options,
-        latex: wrapped.length > 1 ? wrapped : wrapped[0],
+        // These parts are already parsed; wrapping may itself create {{...}}.
+        latex: wrapped,
         matchingKeys: options.matchingKeys ?? parts,
       },
       render && !options.fontUrl,
