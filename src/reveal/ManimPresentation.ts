@@ -76,6 +76,15 @@ export class ManimPresentation {
     return this._live?.player;
   }
 
+  /**
+   * Keep Reveal's JSON configuration messages independent of live runtime state.
+   * @post Object.keys(result).length === 1 && result.id === this.id
+   * @note Speaker view serializes getConfig(), including its plugin instances.
+   */
+  toJSON(): { id: string } {
+    return { id: this.id };
+  }
+
   /** Reveal waits for this promise before announcing its own ready event. */
   async init(deck: RevealDeck): Promise<void> {
     this._deck = deck;
