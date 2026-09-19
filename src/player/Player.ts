@@ -216,29 +216,34 @@ export class Player {
   /**
    * Define the animation sequence. The callback receives a recording proxy
    * that captures all play()/wait() calls to build the master timeline.
+   * @post rejected => this.timeline === old.timeline
    */
   async sequence(builder: (scene: RecordingScene) => Promise<void>): Promise<void> {
     if (this._disposed) throw new Error('Player is disposed.');
     if (this._compiling) throw new Error('A sequence is already compiling.');
     this.pause();
-    this._compiling = true;
-    this._recorder?.rollback();
-    this._recorder?.disposeDetached();
+    const previousState = captureScene(this._scene);
     const previousTimeline = this._masterTimeline;
-    // Reset
-    this._masterTimeline = new MasterTimeline();
-    this._activeLoopSlideIndex = null;
-    this._slidesTargetSlideIndex = -1;
-
-    // Record
-    const recorder = new RecordingScene(this._scene, this._masterTimeline);
+    const previousTime = previousTimeline.getCurrentTime();
+    this._compiling = true;
+    const timeline = new MasterTimeline();
+    let recorder: RecordingScene | undefined;
     try {
+      this._recorder?.rollback();
+      recorder = new RecordingScene(this._scene, timeline);
       await builder(recorder);
       await recorder.finish();
       this._recorder = recorder;
+      this._masterTimeline = timeline;
+      this._activeLoopSlideIndex = null;
+      this._slidesTargetSlideIndex = -1;
+      this._intervalPlayback = false;
     } catch (error) {
-      recorder.rollback();
-      this._masterTimeline = previousTimeline;
+      recorder?.rollback();
+      // Recreate any active animation visuals, then restore the exact live
+      // state (which may include caller edits outside the previous timeline).
+      previousTimeline.seek(previousTime);
+      restoreScene(this._scene, previousState);
       this._emit('error', error);
       throw error;
     } finally {
@@ -775,7 +780,6 @@ export class Player {
     document.removeEventListener('fullscreenchange', this._onFullscreenChange);
     this._ui?.dispose();
     this._controller.dispose();
-    this._recorder?.disposeDetached();
     this._recorder = null;
     this._masterTimeline.clear();
     if (this._ownsScene) this._scene.dispose();

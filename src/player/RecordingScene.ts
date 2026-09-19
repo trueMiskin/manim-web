@@ -22,6 +22,7 @@ interface CompiledSegment {
  * Updaters must keep mutable state in mobjects (captureState for custom classes).
  */
 export class RecordingScene {
+  /** Borrowed identities for checkpoints; recording never transfers ownership. */
   private readonly _known = new Set<Mobject>();
   private readonly _compiled: CompiledSegment[] = [];
   private readonly _stepIds = new Set<string>();
@@ -178,18 +179,14 @@ export class RecordingScene {
     return segment;
   }
 
-  /** Release recorded objects that are no longer owned by the live scene. */
+  /**
+   * @deprecated Recorded mobjects are borrowed, even when detached. Their owners
+   * release them; animation-owned temporary resources are released by reset().
+   * @post this._known.size === old._known.size
+   */
   disposeDetached(): void {
-    const retained = new Set(this._initial.objects.map(({ object }) => object));
-    const candidates = new Set<Mobject>(this._known);
-    for (const compiled of this._compiled) {
-      compiled.start.objects.forEach(({ object }) => candidates.add(object));
-      compiled.end.objects.forEach(({ object }) => candidates.add(object));
-    }
-    for (const object of candidates) {
-      if (!retained.has(object) && !object.parent && !this._realScene.mobjects.has(object))
-        object.dispose();
-    }
+    // Retained for compatibility. Being known to a recorder does not confer
+    // ownership, and detached objects may still be used by the caller.
   }
 
   private _begin(animations: Animation[]): void {
