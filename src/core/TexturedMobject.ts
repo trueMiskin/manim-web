@@ -9,6 +9,37 @@ import { Mobject } from './Mobject';
  */
 export abstract class TexturedMobject extends Mobject {
   /**
+   * Capture local visual dimensions independently of temporary morph geometry.
+   * @post result.texturedVisualSize === undefined || result.texturedVisualSize.length === 2
+   */
+  override captureState(): Record<string, unknown> {
+    const state = super.captureState();
+    if (this.getDisplayMeshLength() !== 1) return state;
+    const mesh = this.getDisplayMeshes()[0];
+    if (mesh?.geometry instanceof THREE.PlaneGeometry && mesh.parent === this.getThreeObject()) {
+      state.texturedVisualSize = [
+        mesh.geometry.parameters.width * mesh.scale.x,
+        mesh.geometry.parameters.height * mesh.scale.y,
+      ];
+    }
+    return state;
+  }
+
+  /**
+   * Restore authoritative dimensions as well as the display mesh size.
+   * @post Array.isArray(state.texturedVisualSize) =>
+   *   this.captureState().texturedVisualSize[0] === state.texturedVisualSize[0] &&
+   *   this.captureState().texturedVisualSize[1] === state.texturedVisualSize[1]
+   */
+  override restoreCapturedState(state: Record<string, unknown>): void {
+    super.restoreCapturedState(state);
+    const size = state.texturedVisualSize;
+    if (Array.isArray(size) && typeof size[0] === 'number' && typeof size[1] === 'number') {
+      this.applyVisualSize(size[0], size[1]);
+    }
+  }
+
+  /**
    * Return the meshes that visually represent this mobject.
    * Textured morph code can use this for strict single-mesh validation.
    */

@@ -18,6 +18,7 @@ export class ShapeMorphStrategy implements MorphStrategy {
   private _startHeight = 0;
   private _targetWidth = 0;
   private _targetHeight = 0;
+  private _hasTemporarySize = false;
 
   private _getVisualDims(mesh: THREE.Mesh, label: string): { width: number; height: number } {
     const geometry = mesh.geometry;
@@ -95,6 +96,7 @@ export class ShapeMorphStrategy implements MorphStrategy {
     this._startHeight = sourceDims.height;
     this._targetWidth = targetDims.width;
     this._targetHeight = targetDims.height;
+    this._hasTemporarySize = true;
 
     // Use unit geometry + mesh.scale for per-frame size interpolation.
     sourceMesh.geometry.dispose();
@@ -166,11 +168,18 @@ export class ShapeMorphStrategy implements MorphStrategy {
     this._sourceTextureMobject.applyContentFrom(this._targetTextureMobject);
     source.opacity = this._crossFadeTargetOpacity;
     source.setStrokeOpacity(this._crossFadeTargetOpacity);
+    this._hasTemporarySize = false;
     this.reset();
     source._markDirty();
   }
 
+  /** @post this._hasTemporarySize === false && this._attachedTarget === null */
   reset(): void {
+    if (this._hasTemporarySize) {
+      this._sourceTextureMobject?.applyVisualSize(this._startWidth, this._startHeight);
+      this._targetTextureMobject?.applyVisualSize(this._targetWidth, this._targetHeight);
+      this._hasTemporarySize = false;
+    }
     this._attachedTarget?.removeFromParent();
     this._attachedTarget = null;
   }
