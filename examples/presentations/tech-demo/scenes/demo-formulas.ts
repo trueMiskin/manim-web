@@ -171,8 +171,8 @@ export default defineSlide(
           }),
           new FadeOut(reflectionLabel),
           new FadeIn(refractionLabel),
-          new FadeIn(label('n₁ = 1', 20, C.muted, [5.5, 0.25, 0])),
-          new FadeIn(label('n₂ = 1.5', 20, C.text, [5.45, -0.55, 0])),
+          new FadeIn(new MathTex({ latex: 'n_1 = 1', fontSize: 20, color: C.muted, position: [5.5, 0.25, 0] })),
+          new FadeIn(new MathTex({ latex: 'n_2 = 1.5', fontSize: 20, color: C.text, position: [5.45, -0.55, 0] })),
         );
         await s.play(
           new FadeIn(label('Matching symbols move as the ray changes', 22, C.muted, [0, -3.25, 0])),
