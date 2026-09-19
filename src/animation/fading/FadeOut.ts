@@ -5,7 +5,7 @@
  */
 
 import { Mobject } from '../../core/Mobject';
-import { Animation, AnimationOptions } from '../Animation';
+import { Animation, AnimationOptions, type AnimationScene } from '../Animation';
 
 export class FadeOut extends Animation {
   private _initialOpacity: number = 1;
@@ -67,6 +67,15 @@ export class FadeOut extends Animation {
       this.mobject.position.set(this._endX, this._endY, this._endZ);
     }
     super.finish();
+  }
+
+  /**
+   * Restore authored opacity after removal so the object can be faded in again.
+   * @post this.remover => this.mobject.opacity === this._initialOpacity
+   */
+  override cleanUpFromScene(scene: AnimationScene): void {
+    super.cleanUpFromScene(scene);
+    if (this.remover) this.mobject.opacity = this._initialOpacity;
   }
 }
 

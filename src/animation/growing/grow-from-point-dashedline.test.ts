@@ -57,10 +57,13 @@ describe('GrowFromPoint on DashedLine (issue #535)', () => {
     const diag = Math.hypot(b.max.x - b.min.x, b.max.y - b.min.y);
     expect(diag).toBeCloseTo(Math.hypot(1, 1), 4);
 
-    await scene.play(new FadeOut(dash, { duration: 0.05 }));
-    expect(dash.opacity).toBe(0);
-    expect(dash.getDashes()[0].opacity).toBe(0); // FadeOut reaches the dash children
+    const fadeOut = new FadeOut(dash, { duration: 0.05 });
+    await scene.play(fadeOut);
     expect(scene.mobjects.has(dash)).toBe(false); // remover cleaned it up
+    // Removal restores authored opacity so the line can be faded in again.
+    expect(dash.opacity).toBe(1);
+    fadeOut.interpolate(1);
+    expect(dash.getDashes()[0].opacity).toBe(0); // FadeOut reaches the dash children
     scene.dispose();
   });
 
@@ -79,9 +82,10 @@ describe('GrowFromPoint on DashedLine (issue #535)', () => {
 
     await scene.play(new FadeOut(other, { duration: 0.05 }));
 
-    // Only `other` is removed; the dashed line is untouched.
-    expect(other.opacity).toBe(0);
+    // Only `other` is removed (with its authored opacity restored); the dashed
+    // line is untouched.
     expect(scene.mobjects.has(other)).toBe(false);
+    expect(other.opacity).toBe(1);
     expect(dash.opacity).toBe(1);
     expect(dash.getDashes().length).toBeGreaterThan(1);
     scene.dispose();
