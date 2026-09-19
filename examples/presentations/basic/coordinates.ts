@@ -21,7 +21,7 @@ function signed(value: number, decimals: number, width: number): string {
 }
 
 export default defineSlide({ title: 'A point moves. The numbers follow.' }, async (s) => {
-  const { accent, secondary, muted } = s.theme.colors;
+  const { accent, secondary, muted, text, grid: gridColor, orbit } = s.colors;
   const [plot, values] = s.columns([3, 2]);
   const axes = plot.place(
     new Axes({
@@ -69,10 +69,10 @@ export default defineSlide({ title: 'A point moves. The numbers follow.' }, asyn
   const origin = axes.c2p(0, 0);
   const grid = [
     ...[-3, -2, -1, 1, 2, 3].map(
-      (x) => new Line({ start: axes.c2p(x, -2), end: axes.c2p(x, 2), color: '#293341' }),
+      (x) => new Line({ start: axes.c2p(x, -2), end: axes.c2p(x, 2), color: gridColor }),
     ),
     ...[-2, -1, 1, 2].map(
-      (y) => new Line({ start: axes.c2p(-3, y), end: axes.c2p(3, y), color: '#293341' }),
+      (y) => new Line({ start: axes.c2p(-3, y), end: axes.c2p(3, y), color: gridColor }),
     ),
   ];
   const curve = new ParametricFunction({
@@ -80,7 +80,7 @@ export default defineSlide({ title: 'A point moves. The numbers follow.' }, asyn
     axes,
     tRange: [0, 2 * Math.PI],
     numSamples: 120,
-    color: '#466277',
+    color: orbit,
     strokeWidth: 2,
   });
   const radius = new Line({ start: origin, end: position(), color: secondary, strokeWidth: 3 });
@@ -92,8 +92,8 @@ export default defineSlide({ title: 'A point moves. The numbers follow.' }, asyn
   updatePointLabel();
   pointLabel.addUpdater(updatePointLabel);
   const labels = [
-    new Text({ text: 'x', fontSize: 22 }).moveTo(axes.c2p(3.3, 0)),
-    new Text({ text: 'y', fontSize: 22 }).moveTo(axes.c2p(0, 2.3)),
+    new Text({ text: 'x', fontSize: 22, color: text }).moveTo(axes.c2p(3.3, 0)),
+    new Text({ text: 'y', fontSize: 22, color: text }).moveTo(axes.c2p(0, 2.3)),
     new Text({ text: '0', fontSize: 20, color: muted }).moveTo(origin).shift([-0.18, -0.23, 0]),
   ];
   for (const { label, text } of readouts) {

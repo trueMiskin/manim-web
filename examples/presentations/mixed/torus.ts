@@ -16,7 +16,7 @@ export default defineSlide(
     const caption = slide.paragraph('Procedural geometry, viewed from a fixed camera.', {
       color: 'muted',
     });
-    const torus = new Torus({ radius: 2, tubeRadius: 0.65, color: '#58c4dd' });
+    const torus = new Torus({ radius: 2, tubeRadius: 0.65, color: slide.colors.accent });
     await slide.step(
       {
         id: 'still',

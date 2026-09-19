@@ -18,26 +18,26 @@ export default defineSlide(
       fontSize: s.theme.titleSize,
       fontFamily: s.theme.fontFamily,
       fontWeight: 'bold',
-      color: s.theme.colors.text,
+      color: s.colors.text,
     });
     const sentence = new Text({
       text: 'One letter. One word. One idea.',
       fontSize: 34,
       fontFamily: s.theme.fontFamily,
-      color: s.theme.colors.accent,
+      color: s.colors.accent,
     }).moveTo([0, 0.4, 0]);
     const caption = new Text({
       text: 'Write a heading · reveal letters · fade in a caption',
       fontSize: 23,
       fontFamily: s.theme.fontFamily,
-      color: s.theme.colors.muted,
+      color: s.colors.muted,
     }).moveTo([0, -1.25, 0]);
     const points = s.bullets([
       'Reveal one idea at a time.',
       'Let each line settle before the next.',
       'Highlight the point to remember.',
     ]);
-    points.item(2).setColor(s.theme.colors.accent);
+    points.item(2).setColor(s.colors.accent);
 
     await s.step(
       {
@@ -74,7 +74,13 @@ export default defineSlide(
             { lagRatio: 0.65 },
           ),
         );
-        await s.play(new Indicate(points.item(2), { scaleFactor: 1.06, duration: 0.9 }));
+        await s.play(
+          new Indicate(points.item(2), {
+            scaleFactor: 1.06,
+            duration: 0.9,
+            color: s.colors.highlight,
+          }),
+        );
       },
     );
   },

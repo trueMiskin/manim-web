@@ -1,10 +1,8 @@
 import { Axes, Indicate, MathTex, TransformMatchingTex, VGroup } from 'manim-web';
 import { defineSlide } from 'manim-web/reveal';
 
-const accent = '#58c4dd';
-
 export default defineSlide(
-  { title: 'A quadratic example', theme: { titleAlign: 'left', colors: { accent } } },
+  { title: 'A quadratic example', theme: { titleAlign: 'left' } },
   async (s) => {
     const [content, figure] = s.columns([3, 2]);
     const intro = content.paragraph("For $f(x)=x^2$, the derivative is $f'(x)=2x$.");
@@ -25,10 +23,10 @@ export default defineSlide(
       yRange: [0, 4, 1],
       xLength: 4.3,
       yLength: 3.3,
-      color: '#b8c2d1',
+      color: s.colors.muted,
       tips: false,
     });
-    const curve = axes.plot((x) => x * x, { color: accent, strokeWidth: 3 });
+    const curve = axes.plot((x) => x * x, { color: s.colors.accent, strokeWidth: 3 });
     // Keep the axes and curve together while the column positions the diagram.
     const diagram = figure.place(new VGroup(axes, curve), { height: 3.7 });
 
@@ -40,7 +38,7 @@ export default defineSlide(
       { id: 'substitute', notes: 'Substitute the derivative into our update rule.' },
       async () => {
         await s.write(rule);
-        await s.play(new Indicate(rule.part('update')));
+        await s.play(new Indicate(rule.part('update'), { color: s.colors.secondary }));
       },
     );
     await s.step(
@@ -53,7 +51,7 @@ export default defineSlide(
           latex: [
             { key: 'next', latex: 'x_{k+1}' },
             '=',
-            { key: 'update', latex: String.raw`(1-2\eta)x_k`, color: accent },
+            { key: 'update', latex: String.raw`(1-2\eta)x_k`, color: s.colors.accent },
           ],
           fontSize: 34,
           color: rule.color,

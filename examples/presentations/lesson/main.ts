@@ -9,10 +9,13 @@ import {
   sceneSlides,
   topic,
 } from 'manim-web/reveal';
+import { palettes } from './palettes';
 
 const plugin = manimPresentation(
   presentation({
     title: 'A short lesson: gradient descent',
+    palettes,
+    palette: 'dark',
     topics: [
       topic('idea', [sceneSlides('gradient', () => import('./gradient'))]),
       topic('example', [
