@@ -42,17 +42,18 @@ test('basic text replaces previous content and restores it through interrupted r
   await expect(selection).toContainText('Give words a little motion');
   await expect(selection).toContainText('One letter. One word. One idea.');
   await expect(selection).not.toContainText('Reveal one idea at a time.');
-  const headingBounds = () =>
-    page.evaluate(() => {
+  const headingBounds = (text = 'Give words a little motion') =>
+    page.evaluate((text) => {
       const heading = [...window.__MANIM_PRESENTATION__!.player!.scene.mobjects].find(
         (object): object is Text =>
           object.getThreeObject().visible &&
           typeof (object as Text).getText === 'function' &&
-          (object as Text).getText() === 'Give words a little motion',
+          (object as Text).getText() === text,
       )!;
       return heading.getBounds();
-    });
+    }, text);
   const expected = await headingBounds();
+  expect((expected.min.x + expected.max.x) / 2).toBeCloseTo(0);
   await page.keyboard.press('ArrowDown');
   await at(page, 'text--styles--bullets');
   await page.waitForFunction(() => {
@@ -68,6 +69,8 @@ test('basic text replaces previous content and restores it through interrupted r
   await at(page, 'text--styles--bullets');
   await settled(page);
   await expect(selection).toContainText('Build a list, then add emphasis');
+  const replacement = await headingBounds('Build a list, then add emphasis');
+  expect((replacement.min.x + replacement.max.x) / 2).toBeCloseTo(0);
   await expect(selection).toContainText('Highlight the point to remember.');
   for (const previous of ['Give words a little motion', 'One letter.', 'Write a heading']) {
     await expect(selection).not.toContainText(previous);
@@ -95,16 +98,19 @@ test('native horizontal/vertical keys, deep links, replay and overview share che
   const titleBounds = () =>
     page.evaluate(() => {
       const title = [...window.__MANIM_PRESENTATION__!.player!.scene.mobjects][0];
-      return { left: title.getBounds().min.x, top: title.getBounds().max.y };
+      return { center: title.getCenter()[0], top: title.getBounds().max.y };
     });
   const staticTitleBounds = await titleBounds();
+  expect(staticTitleBounds.center).toBeCloseTo(0);
   await expect(page.locator('.manim-handout > .manim-page')).toHaveCount(11);
   await expect(page.locator('.reveal .slides > section')).toHaveCount(5);
   await page.keyboard.press('ArrowRight');
   await at(page, 'geometry--circle--draw');
   await settled(page);
-  // Static and animated slide titles share the same content origin.
-  expect(await titleBounds()).toEqual(staticTitleBounds);
+  // Static and animated titles share the same center and top edge.
+  const animatedTitleBounds = await titleBounds();
+  expect(animatedTitleBounds.center).toBeCloseTo(staticTitleBounds.center);
+  expect(animatedTitleBounds.top).toBeCloseTo(staticTitleBounds.top);
   await expect(page.locator(`${currentLeaf} .notes`)).toContainText(
     'Start with one geometric object',
   );

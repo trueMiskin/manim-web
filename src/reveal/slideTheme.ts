@@ -6,6 +6,7 @@ export interface SlideTheme {
   fontUrl?: string;
   titleFontFamily?: string;
   titleFontUrl?: string;
+  /** Horizontal title alignment. Defaults to center; body alignment is independent. */
   titleAlign?: SlideAlignment;
   titleSize: number;
   bodySize: number;
@@ -31,12 +32,13 @@ export type SlideThemeOptions = Partial<Omit<SlideTheme, 'colors'>> & {
   colors?: Partial<SlideTheme['colors']>;
 };
 
-type ResolvedSlideTheme = SlideTheme & Required<Pick<SlideTheme, 'captionSize' | 'captionGap'>>;
+type ResolvedSlideTheme = SlideTheme &
+  Required<Pick<SlideTheme, 'titleAlign' | 'captionSize' | 'captionGap'>>;
 
 export const DEFAULT_SLIDE_THEME: Readonly<ResolvedSlideTheme> = Object.freeze({
   fontFamily: 'sans-serif',
   titleSize: 42,
-  titleAlign: 'left',
+  titleAlign: 'center',
   bodySize: 28,
   captionSize: 22,
   mathSize: 40,
@@ -68,11 +70,12 @@ export function resolveSlideTheme(options: SlideThemeOptions = {}): ResolvedSlid
   const theme = {
     ...DEFAULT_SLIDE_THEME,
     ...options,
+    titleAlign: options.titleAlign ?? DEFAULT_SLIDE_THEME.titleAlign,
     captionSize: options.captionSize ?? DEFAULT_SLIDE_THEME.captionSize,
     captionGap: options.captionGap ?? DEFAULT_SLIDE_THEME.captionGap,
     colors: { ...DEFAULT_SLIDE_THEME.colors, ...options.colors },
   };
-  if (!['left', 'center', 'right'].includes(theme.titleAlign ?? 'left'))
+  if (!['left', 'center', 'right'].includes(theme.titleAlign))
     throw new Error('Slide titleAlign must be left, center, or right.');
   for (const key of ['titleSize', 'bodySize', 'captionSize', 'mathSize', 'lineHeight'] as const) {
     if (!Number.isFinite(theme[key]) || theme[key] <= 0)
