@@ -3,9 +3,12 @@ import RevealNotes from 'reveal.js/plugin/notes';
 import 'reveal.js/reveal.css';
 import 'reveal.js/theme/black.css';
 import { manimPresentation, presentation, topic, sceneSlides } from 'manim-web/reveal';
+import { palettes } from './palettes';
 
 const content = presentation({
   title: 'A first manim-web presentation',
+  palettes,
+  palette: 'dark',
   topics: [
     topic('welcome', [
       sceneSlides('intro', () => import('./intro')),

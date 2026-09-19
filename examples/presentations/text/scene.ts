@@ -9,7 +9,7 @@ export default defineSlide({ title: 'Writing and selection' }, async (slide) => 
       text: 'Café  👩‍🔬\nWrite. Pause. Select. Print.',
       fontSize: 36,
       fontFamily: slide.theme.fontFamily,
-      color: slide.theme.colors.text,
+      color: slide.colors.text,
       lineHeight: slide.theme.lineHeight,
       textAlign: 'left',
     }),
@@ -28,7 +28,7 @@ export default defineSlide({ title: 'Writing and selection' }, async (slide) => 
     slide.play(new AddTextLetterByLetter(message, { duration: 2 })),
   );
   await slide.step({ id: 'emphasis', title: 'Emphasis and selection' }, () =>
-    slide.play(new Indicate(heading)),
+    slide.play(new Indicate(heading, { color: slide.colors.secondary })),
   );
   await slide.step({ id: 'remove', title: 'Only visible text is selectable' }, () =>
     slide.play(new FadeOut(message)),
