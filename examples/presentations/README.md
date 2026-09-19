@@ -5,10 +5,10 @@ The optional `manim-web/reveal` entry provides authored topics, animated checkpo
 From the repository, run `npm run dev` and open:
 
 - `/examples/presentations/lesson/index.html`: start here for ordinary math lessons. Two short scenes build a gradient-descent explanation with wrapping prose, inline math, bullet reveals, named formula parts, a transformation, and a plot in a second column. A static Markdown recap includes display math.
-- `/examples/presentations/basic/index.html`: four topics and eight pages: static bullets, geometry, varied text animations, and a moving 2D point with live coordinates, distance and angle.
+- `/examples/presentations/basic/index.html`: five topics and eleven pages: static bullets, geometry, varied text animations, a moving 2D point with live coordinates, distance and angle, and matrix–vector multiplication calculated one row at a time. [matrix.ts](basic/matrix.ts) uses ordinary LaTeX matrices with automatic column layout.
 - `/examples/presentations/text/index.html`: writing, Unicode graphemes, emphasis, removal, and text selection.
 - `/examples/presentations/mixed/index.html`: Markdown, HTML, SVG, video/audio with print replacements, backgrounds, and a rotating 3D torus.
-- `/examples/presentations/tech-demo/index.html`: the [tech demo](tech-demo/README.md), with eight topics and 16 checkpoints covering shape and formula morphs, bouncing rays, deforming surfaces, heatmaps and optimization. A matching Python scene is included.
+- `/examples/presentations/tech-demo/index.html`: the [tech demo](tech-demo/README.md), with eight topics and 17 checkpoints covering shape and formula morphs, bouncing rays, deforming surfaces, heatmaps and optimization. A matching Python scene is included.
 
 See the [authoring API](API.md) for scene steps, embedded playback, text contracts and capture options.
 

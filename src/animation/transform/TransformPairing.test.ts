@@ -37,6 +37,25 @@ function makeLinearClosedSquare(x0: number, y0: number, x1: number, y1: number):
 }
 
 describe('TransformPairing core', () => {
+  // MIGRATION: open paths with equal topology retain their directed anchor order.
+  it('preserves open ray endpoints when the bend changes direction', () => {
+    const source = new VMobject().setPointsAsCorners([
+      [-5, 1, 0],
+      [-0.2, 1, 0],
+      [0.2, 0.9, 0],
+      [3, 0, 0],
+    ]);
+    const target = new VMobject().setPointsAsCorners([
+      [-5, 1, 0],
+      [-0.2, 1, 0],
+      [0.2, 1.1, 0],
+      [4, 3, 0],
+    ]);
+    const aligned = alignVmobjectPair(source, target);
+    expect(aligned.startPoints).toEqual(source.getLocalPoints());
+    expect(aligned.targetPoints).toEqual(target.getLocalPoints());
+  });
+
   it('throws when provided subpath lengths do not match point count', () => {
     const source = vmWithPoints([
       [0, 0, 0],

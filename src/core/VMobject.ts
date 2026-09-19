@@ -13,6 +13,7 @@ import * as THREE from 'three';
 import { Mobject, Vector3Tuple } from './Mobject';
 import { isVMobject } from './MobjectTypes';
 import { VMobjectRendering } from './VMobjectRendering';
+import { isClosedPath } from './VMobjectGeometry';
 import { lerp, lerpPoint as lerpPoint3D, signedArea2DFromStride } from '../utils/math';
 import type { Point } from './VMobjectCurves';
 
@@ -508,7 +509,8 @@ export class VMobject extends VMobjectRendering {
 
   /**
    * Align points between this VMobject and a target so they have the same
-   * count, consistent winding, and optimal rotation for smooth morphing.
+   * count. Closed outlines also get consistent winding and optimal rotation;
+   * open paths retain their directed endpoint order.
    * @param target - The target VMobject to align with
    */
   alignPoints(target: VMobject): void {
@@ -525,8 +527,8 @@ export class VMobject extends VMobjectRendering {
       target._points3D = this._interpolatePointList3D(target._points3D, maxCount);
     }
 
-    // Need at least 4 points (one cubic bezier segment) to optimize
-    if (this._points3D.length < 4) return;
+    // Only closed outlines can change their start anchor without changing the path.
+    if (!isClosedPath(this._points3D) || !isClosedPath(target._points3D)) return;
 
     // Ensure consistent winding direction between source and target.
     // Opposite winding causes collapsed/twisted intermediate shapes.
@@ -566,14 +568,9 @@ export class VMobject extends VMobjectRendering {
     const n = target.length;
     if (n < 4) return target;
 
-    // Detect closed path: first point ≈ last point
-    const first = target[0];
-    const last = target[n - 1];
-    const closed = Math.abs(first[0] - last[0]) < 1e-6 && Math.abs(first[1] - last[1]) < 1e-6;
-
     // For closed paths, the "open" portion is points 0..n-2 (length = n-1).
     // We rotate within this open portion, then duplicate the first point.
-    const openLen = closed ? n - 1 : n;
+    const openLen = n - 1;
 
     const stride = 3; // cubic bezier: each segment = 3 new points
     const numRotations = Math.floor(openLen / stride);
@@ -607,9 +604,7 @@ export class VMobject extends VMobjectRendering {
       rotated.push([...target[srcIdx]]);
     }
     // Re-close the path
-    if (closed) {
-      rotated.push([...rotated[0]]);
-    }
+    rotated.push([...rotated[0]]);
     return rotated;
   }
 

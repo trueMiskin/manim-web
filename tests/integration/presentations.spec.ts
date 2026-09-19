@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import type { ManimPresentation } from '../../src/reveal/ManimPresentation';
+import type { Text } from '../../src/mobjects/text/Text';
 
 declare global {
   interface Window {
@@ -28,14 +29,52 @@ async function settled(page: Page): Promise<void> {
   });
 }
 
+// MIGRATION: navigating back restores the same text geometry after either a
+// completed or interrupted replacement animation, independently of replay history.
+test('the basic headline keeps its size when returning during a text replacement', async ({
+  page,
+}) => {
+  await ready(page, `${basic}index.html#/text--styles--reveal`);
+  await at(page, 'text--styles--reveal');
+  await settled(page);
+  const headingBounds = () =>
+    page.evaluate(() => {
+      const heading = [...window.__MANIM_PRESENTATION__!.player!.scene.mobjects].find(
+        (object): object is Text =>
+          typeof (object as Text).getText === 'function' &&
+          (object as Text).getText() === 'Give words a little motion',
+      )!;
+      return heading.getBounds();
+    });
+  const expected = await headingBounds();
+  await page.keyboard.press('ArrowDown');
+  await at(page, 'text--styles--bullets');
+  await page.waitForFunction(() => {
+    const player = window.__MANIM_PRESENTATION__!.player!;
+    const checkpoint = player.checkpoints.find(({ id }) => id === 'bullets')!;
+    return player.isPlaying && player.timeline.getCurrentTime() > checkpoint.startTime + 0.15;
+  });
+  await page.keyboard.press('ArrowUp');
+  await at(page, 'text--styles--reveal');
+  await settled(page);
+  expect(await headingBounds()).toEqual(expected);
+  await page.keyboard.press('ArrowDown');
+  await at(page, 'text--styles--bullets');
+  await settled(page);
+  await page.keyboard.press('ArrowUp');
+  await at(page, 'text--styles--reveal');
+  await settled(page);
+  expect(await headingBounds()).toEqual(expected);
+});
+
 // MIGRATION: real browser representatives for native Reveal navigation and the
 // invariant that any leaf can be reached/restored without replaying earlier ones.
 test('native horizontal/vertical keys, deep links, replay and overview share checkpoint state', async ({
   page,
 }) => {
   await ready(page, basic);
-  await expect(page.locator('.manim-handout > .manim-page')).toHaveCount(8);
-  await expect(page.locator('.reveal .slides > section')).toHaveCount(4);
+  await expect(page.locator('.manim-handout > .manim-page')).toHaveCount(11);
+  await expect(page.locator('.reveal .slides > section')).toHaveCount(5);
   await page.keyboard.press('ArrowRight');
   await at(page, 'geometry--circle--draw');
   await settled(page);
