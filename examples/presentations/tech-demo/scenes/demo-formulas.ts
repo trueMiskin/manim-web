@@ -10,8 +10,8 @@ import {
   Transform,
   TransformMatchingTex,
   Write,
-} from '../../../../src';
-import { defineSlide } from '../../../../src/reveal';
+} from 'manim-web';
+import { defineSlide } from 'manim-web/reveal';
 import { label, TECH_THEME } from './common';
 
 export default defineSlide(

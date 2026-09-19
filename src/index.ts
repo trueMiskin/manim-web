@@ -84,6 +84,7 @@ export type {
   LinearFillGradient,
   RadialFillGradient,
 } from './core/VMobjectFillGradient';
+export { resamplePointList3D } from './core/VMobjectTransformAlignment';
 export { VGroup } from './core/VGroup';
 export { CurvesAsSubmobjects } from './core/VMobjectCurveUtils';
 export { VDict, VectorizedPoint } from './core/VDict';

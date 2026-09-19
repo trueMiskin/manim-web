@@ -7,9 +7,9 @@ import {
   ReplacementTransform,
   linear,
   type Vector3Tuple,
-} from '../../../../src';
-import { defineSlide } from '../../../../src/reveal';
-import { subVec } from '../../../../src/utils/vectors';
+  subVec,
+} from 'manim-web';
+import { defineSlide } from 'manim-web/reveal';
 import { TECH_THEME, label } from './common';
 import { lensRays, makeConcertHall, makeLens, polyline, traceHallRay } from './optics-geometry';
 

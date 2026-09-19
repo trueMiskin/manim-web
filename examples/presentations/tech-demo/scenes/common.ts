@@ -1,5 +1,5 @@
-import { Text, type Vector3Tuple } from '../../../../src';
-import type { SlideThemeOptions } from '../../../../src/reveal';
+import { Text, type Vector3Tuple } from 'manim-web';
+import type { SlideThemeOptions } from 'manim-web/reveal';
 import { SOURCE_FONT, SOURCE_FONT_BOLD } from './source-font';
 export { SOURCE_FONT, SOURCE_FONT_BOLD, prepareSourceFonts } from './source-font';
 

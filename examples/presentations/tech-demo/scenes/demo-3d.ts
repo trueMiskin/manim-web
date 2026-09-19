@@ -1,5 +1,5 @@
-import { ThreeDScene, FadeIn, Rotate, UpdateFromAlphaFunc, linear } from '../../../../src';
-import type { SceneDefinition } from '../../../../src/reveal';
+import { ThreeDScene, FadeIn, Rotate, UpdateFromAlphaFunc, linear } from 'manim-web';
+import type { SceneDefinition } from 'manim-web/reveal';
 import { heading, label } from './common';
 import { techDemoPalettes } from '../palettes';
 import { DeformingSurface } from './surface-deformation';

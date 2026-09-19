@@ -1,5 +1,5 @@
-import { Surface3D, type Vector3Tuple } from '../../../../src';
-import type { ColorPalette } from '../../../../src/reveal';
+import { Surface3D, type Vector3Tuple } from 'manim-web';
+import type { ColorPalette } from 'manim-web/reveal';
 
 function surfacePoint(u: number, v: number, shape: number, phase: number): Vector3Tuple {
   const ripple = 0.7 * Math.sin(2 * u - phase) * Math.cos(2 * v);

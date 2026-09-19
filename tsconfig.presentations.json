@@ -1,20 +1,15 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "types": [
-      "vite/client",
-      "node"
-    ],
+    "types": ["vite/client", "node"],
     "rootDir": ".",
-    "customConditions": [
-      "source"
-    ]
+    "customConditions": ["source"],
+    "paths": {
+      "@/*": ["src/*"],
+      "manim-web": ["src/index.ts"],
+      "manim-web/reveal": ["src/reveal/index.ts"]
+    }
   },
-  "include": [
-    "src",
-    "examples/presentations"
-  ],
-  "exclude": [
-    "src/**/*.test.ts"
-  ]
+  "include": ["src", "examples/presentations"],
+  "exclude": ["src/**/*.test.ts"]
 }

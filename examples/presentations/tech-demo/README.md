@@ -19,9 +19,21 @@ For plain bullet slides, varied text animations and a moving point with live coo
 
 ## TypeScript presentation
 
-From the repository root:
+This directory is a standalone project. It currently needs a packed build of this checkout because its curve-resampling API has not been published yet; follow the tarball instructions in the [presentation setup](../README.md) before running the commands below. Copy this directory wherever you want to work, then use Node 20.x (20.19 or later), or Node 22.12 and later, to install and run it:
 
 ```sh
+npm install
+npm run typecheck
+npm run dev
+# Open the URL printed by Vite.
+```
+
+All library imports use `manim-web` or `manim-web/reveal`; the direct Three.js dependency is also declared in `package.json`. Fonts, geometry, numerical data, and the Python reference are included in this directory.
+
+To work against live library source inside this repository, run from the repository root:
+
+```sh
+npm ci
 npm run dev
 # Open http://localhost:5173/examples/presentations/tech-demo/
 ```
@@ -32,11 +44,17 @@ Use the **Color palette** selector beside the playback and print controls to swi
 
 Edit [palettes.ts](palettes.ts) to change the standard text and background roles or custom colors such as `cyan`, `amber`, and `tableSurface`. The same named color can be cyan in the dark palette and dark blue in the light palette. `defineSlide` builders read `s.colors`; the direct 3D builder receives `{ colors }` as its second argument. The heatmaps, numerical vector colors, and their table labels keep their scientific color scale. Set `palette: 'light'` in [deck.ts](deck.ts) to start and export in light colors. See the [palette API](../API.md#switch-color-palettes) for configuration and `setPalette(...)`.
 
-Build a portable site from the repository root:
+Build a portable site from the standalone example directory:
 
 ```sh
-cd examples/presentations/tech-demo
-node ../../../scripts/slides.mjs build
+npx playwright install chromium
+npm run build
+```
+
+For a build against live source in this repository, run from the repository root:
+
+```sh
+node scripts/slides.mjs build examples/presentations/tech-demo --config examples/presentations/vite.config.ts
 ```
 
 The CLI uses installed Chromium or Chrome; `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` can select an executable. Serve `dist/` with a static HTTP server. Fonts, geometry, heatmaps, gradients and print snapshots are bundled locally.
@@ -49,10 +67,16 @@ python3 -m http.server 8000 --bind 127.0.0.1 --directory dist
 
 Open <http://localhost:8000/#/>. If a server already serves this `dist/` on port 8000, keep it running and reload the page after rebuilding.
 
-To export the 17-page PDF, run from the same example directory:
+To export the 17-page PDF, run from the standalone example directory:
 
 ```sh
-node ../../../scripts/slides.mjs pdf tech-demo.pdf
+npm run pdf -- tech-demo.pdf
+```
+
+To export against repository source, run from the repository root:
+
+```sh
+node scripts/slides.mjs pdf tech-demo.pdf examples/presentations/tech-demo --config examples/presentations/vite.config.ts
 ```
 
 The PDF command rebuilds the site before exporting.
@@ -65,16 +89,15 @@ If the page displays:
 
 The loaded deck and `manim-handout.json` disagree on their title, dimensions, selected palette, palette colors, or asset format version. This can happen after changing the deck or when a browser caches an older handout. The loader now revalidates the handout with the server on each load to prevent stale cached metadata from causing this error.
 
-From the repository root, rebuild the example and its handout together:
+Rebuild the example and its handout together with `npm run build` in the standalone example. For a source build, run from the repository root:
 
 ```sh
-cd examples/presentations/tech-demo
-node ../../../scripts/slides.mjs build
+node scripts/slides.mjs build examples/presentations/tech-demo --config examples/presentations/vite.config.ts
 ```
 
 Wait for `Prepared 17 animated handout states.`, then reload <http://localhost:8000/#/>. If the old page remains, use a hard reload (Cmd+Shift+R on macOS or Ctrl+Shift+R on Windows/Linux). Confirm the server serves this example's `dist/` and that any deployed copy includes the entire rebuilt directory: HTML, JavaScript, fonts, images and `manim-handout.json`.
 
-Use the `slides.mjs build` command above for this repair. The repository-root `npm run build` builds the library; it does not regenerate this example's handout.
+Use the appropriate example build command above for this repair. The repository-root `npm run build` builds the library; it does not regenerate this example's handout.
 
 To run the focused cache regression check, use the repository root:
 

@@ -10,8 +10,8 @@ import {
   UpdateFromAlphaFunc,
   linear,
   type Animation,
-} from '../../../../src';
-import type { RecordingScene } from '../../../../src/player/RecordingScene';
+  type RecordingScene,
+} from 'manim-web';
 import fieldData from '../data/states.json';
 import { SOURCE_FONT } from './source-font';
 

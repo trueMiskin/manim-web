@@ -1,5 +1,5 @@
-import { Dot, FadeIn, Group, UpdateFromAlphaFunc, VMobject, linear } from '../../../../src';
-import { defineSlide } from '../../../../src/reveal';
+import { Dot, FadeIn, Group, UpdateFromAlphaFunc, VMobject, linear } from 'manim-web';
+import { defineSlide } from 'manim-web/reveal';
 import optimization from '../data/optimization.json';
 import { label, TECH_THEME } from './common';
 import {

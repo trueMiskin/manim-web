@@ -7,9 +7,10 @@ import {
   Rectangle,
   RoundedRectangle,
   type Vector3Tuple,
-} from '../../../../src/index';
-import { addVec, scaleVec } from '../../../../src/utils/vectors';
-import type { ColorPalette } from '../../../../src/reveal';
+  addVec,
+  scaleVec,
+} from 'manim-web';
+import type { ColorPalette } from 'manim-web/reveal';
 import { label } from './common';
 import {
   cushion,

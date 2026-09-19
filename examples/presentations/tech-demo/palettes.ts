@@ -1,4 +1,4 @@
-import { darkColors, definePalettes, lightColors } from '../../../src/reveal';
+import { darkColors, definePalettes, lightColors } from 'manim-web/reveal';
 
 /** Named colors shared by slide text and manually authored diagrams. */
 export const techDemoPalettes = definePalettes({

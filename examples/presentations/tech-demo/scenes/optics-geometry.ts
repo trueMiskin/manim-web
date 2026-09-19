@@ -1,16 +1,20 @@
 import { Vector3 } from 'three';
-import { ArcBetweenPoints, Line, VMobject, VGroup, type Vector3Tuple } from '../../../../src';
 import {
+  ArcBetweenPoints,
+  Line,
+  VMobject,
+  VGroup,
+  type Vector3Tuple,
   addVec,
   subVec,
   scaleVec,
   normalizeVec,
   crossVec,
   dotVec,
-} from '../../../../src/utils/vectors';
-import type { ColorPalette } from '../../../../src/reveal';
+  resamplePointList3D,
+} from 'manim-web';
+import type { ColorPalette } from 'manim-web/reveal';
 import { techDemoPalettes } from '../palettes';
-import { resamplePointList3D } from '../../../../src/core/VMobjectTransformAlignment';
 
 export type LensType = 'convex' | 'thick_convex' | 'concave';
 export const hallVertices: Vector3Tuple[] = [

@@ -1,5 +1,5 @@
-import { Create, FadeIn, LaggedStart } from '../../../../src';
-import { defineSlide } from '../../../../src/reveal';
+import { Create, FadeIn, LaggedStart } from 'manim-web';
+import { defineSlide } from 'manim-web/reveal';
 import { label, TECH_THEME } from './common';
 import {
   changeField,
