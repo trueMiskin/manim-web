@@ -239,6 +239,8 @@ describe('content slide authoring', () => {
         await s.step({ id: 'out' }, () => s.play(new FadeOut(diagram, { duration: 0.1 })));
         await s.step({ id: 'return-child' }, () => s.reveal(first));
         await s.step({ id: 'show' }, () => s.show(diagram));
+        await s.step({ id: 'remove' }, () => s.scene.remove(diagram));
+        await s.step({ id: 'return-second' }, () => s.reveal(second));
       },
     );
     await player.sequence(definition.build);
@@ -258,6 +260,13 @@ describe('content slide authoring', () => {
     player.seekCheckpoint('show');
     expect(player.scene.mobjects.has(diagram)).toBe(true);
     expect(first.opacity).toBe(0.4);
+    expect(second.opacity).toBe(1);
+    player.seekCheckpoint('remove');
+    expect(player.scene.mobjects.has(diagram)).toBe(false);
+    player.seekCheckpoint('return-second');
+    expect(player.scene.mobjects.has(diagram)).toBe(true);
+    expect(first.opacity).toBe(0);
+    expect(first.getThreeObject().visible).toBe(false);
     expect(second.opacity).toBe(1);
   });
 
