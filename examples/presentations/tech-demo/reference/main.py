@@ -1,4 +1,4 @@
-"""Eight visual features, two checkpoints each, matching the browser tech demo.
+"""Eight visual features and 17 checkpoints, matching the browser tech demo.
 
 Run from this directory with ``uv run manim --renderer=cairo -ql main.py TechDemo``.
 The demo reads the bundled fields and recorded transmitter trajectory.
@@ -149,7 +149,7 @@ def field_table():
 
 
 class TechDemo(ThreeDSlide):
-    """A compact Manim counterpart to the 16-checkpoint TypeScript demo."""
+    """A compact Manim counterpart to the 17-checkpoint TypeScript demo."""
 
     def construct(self):
         self.camera.background_color = "#000000"
@@ -195,14 +195,15 @@ class TechDemo(ThreeDSlide):
         self.wait(0.2)
 
     def optics_demo(self):
-        self.next_slide(notes="Optics 1/2: draw a convex lens and a bundle of rays.")
+        self.next_slide(notes="Optics 1/3: draw a convex lens and a bundle of rays.")
         self.start_topic("Shape morphing", "A lens becomes a room; light keeps bouncing")
         shape, rays = lens(), lens_rays()
         self.play(m.Create(shape), m.Create(rays), run_time=1.5)
 
-        self.next_slide(notes="Optics 2/2: morph the lens into a room and follow three bouncing rays.")
+        self.next_slide(notes="Optics 2/3: change to a concave lens and pause on its diverging rays.")
         self.play(m.Transform(shape, lens(concave=True)),
                   m.Transform(rays, lens_rays(focus=-3)), run_time=1)
+        self.next_slide(notes="Optics 3/3: morph the lens into a room and follow three bouncing rays.")
         room = m.VMobject().set_points_as_corners(ROOM_VERTICES)
         room.set_stroke(TEXT, width=2.5).set_fill("#161B22", opacity=0.4)
         self.play(m.Transform(shape, room, run_time=1.5), m.FadeOut(rays, run_time=0.5))

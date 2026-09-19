@@ -6,9 +6,14 @@ import { MarkupText } from './MarkupText';
 import { Group } from '../../core/Group';
 import { ReplacementTransform, Transform } from '../../animation/transform/Transform';
 import { Box3, MeshBasicMaterial, Vector3 } from 'three';
-import { AddTextLetterByLetter, RemoveTextLetterByLetter } from '../../animation/creation/Create';
+import {
+  AddTextLetterByLetter,
+  RemoveTextLetterByLetter,
+  Write,
+} from '../../animation/creation/Create';
 import { AddTextWordByWord } from '../../animation/creation/CreationExtensions';
 import { splitTexGroups, textGraphemes } from './TextSemantics';
+import { Player } from '../../player/Player';
 
 vi.mock('./TextGlyphGroup', () => ({
   TextGlyphGroup: class {
@@ -37,6 +42,38 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('presentation text', () => {
+  // MIGRATION: recorded text bounds are independent of seeks through a
+  // replacement, including seeks that interrupt its temporary mesh scaling.
+  it('restores the original text size after replaying and interrupting replacement', async () => {
+    const player = new Player(document.createElement('div'), {
+      headless: true,
+      ui: false,
+      keyboard: false,
+      pointer: false,
+    });
+    try {
+      const source = new Text({ text: 'Give words a little motion', fontSize: 44 });
+      const target = new Text({ text: 'Build a list, then add emphasis', fontSize: 44 });
+      await player.sequence(async (scene) => {
+        await scene.step({ id: 'write' }, () => scene.play(new Write(source, { duration: 0.2 })));
+        await scene.step({ id: 'replace' }, () =>
+          scene.play(new ReplacementTransform(source, target, { duration: 0.4 })),
+        );
+      });
+      player.seekCheckpoint('write');
+      const expected = source.getBounds();
+      player.seek(0.4);
+      player.seekCheckpoint('write');
+      expect(source.getBounds()).toEqual(expected);
+      player.seek(0.3);
+      player.seekCheckpoint('replace');
+      player.seekCheckpoint('write');
+      expect(source.getBounds()).toEqual(expected);
+    } finally {
+      player.dispose();
+    }
+  });
+
   // MIGRATION: setStyle updates rendered and semantic color and invalidates cached
   // glyphs, including after initial material synchronization.
   it('synchronizes setStyle text color with its canvas and glyph readiness', async () => {

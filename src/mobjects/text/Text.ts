@@ -417,7 +417,15 @@ export class Text extends TexturedMobject {
     if (Array.isArray(state.visualSize)) {
       const width = Number(state.visualSize[0]);
       const height = Number(state.visualSize[1]);
-      if (width !== this._worldWidth || height !== this._worldHeight)
+      // A morph uses a unit plane with temporary mesh scaling. Redrawing the
+      // restored text can already recover its dimensions while leaving that
+      // scale behind, so size equality alone does not mean restoration is done.
+      const meshScale = this._mesh?.scale;
+      if (
+        width !== this._worldWidth ||
+        height !== this._worldHeight ||
+        (meshScale && (meshScale.x !== 1 || meshScale.y !== 1 || meshScale.z !== 1))
+      )
         this.applyVisualSize(width, height);
     }
     this._markDirty();

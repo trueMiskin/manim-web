@@ -1,11 +1,11 @@
 # manim-web tech demo
 
-A short feature tour: **8 topics, 16 checkpoints**, with text and formulas demonstrated in just two slides. The TypeScript deck and the [Python presentation](reference/main.py) follow the same sequence.
+A short feature tour: **8 topics, 17 checkpoints**, with text and formulas demonstrated in just two slides. The TypeScript deck and the [Python presentation](reference/main.py) follow the same sequence.
 
-| Topic                  | First checkpoint             | Second checkpoint                                |
+| Topic                  | First checkpoint             | Following checkpoints                            |
 | ---------------------- | ---------------------------- | ------------------------------------------------ |
 | Text and formulas      | Write text                   | Match words and render LaTeX                     |
-| Shape morphing         | Draw a lens and rays         | Morph it into a room with bouncing light pulses  |
+| Shape morphing         | Draw a lens and rays         | Change to a concave lens, then morph into a room |
 | Formula morphing       | Show the law of reflection   | Transform it into Snell’s law and bend the ray   |
 | Paths and motion       | Construct a reflected path   | Animate a ball along the path                    |
 | Live geometry          | Show the initial reflection  | Recompute the bounce as RX moves                 |
@@ -24,7 +24,7 @@ npm run dev
 # Open http://localhost:5173/examples/presentations/tech-demo/
 ```
 
-Left/right changes topic, up/down changes checkpoint, Space advances, P pauses, and R replays. Text is selectable while paused. Each topic has two stops; intermediate animation changes run together without extra clicks.
+Left/right changes topic, up/down changes checkpoint, Space advances, P pauses, and R replays. Text is selectable while paused. The optics topic has three stops: convex lens, concave lens, then the room morph. Other topics have two stops.
 
 Build a portable site from the repository root:
 
@@ -43,7 +43,7 @@ python3 -m http.server 8000 --bind 127.0.0.1 --directory dist
 
 Open <http://localhost:8000/#/>. If a server already serves this `dist/` on port 8000, keep it running and reload the page after rebuilding.
 
-To export the 16-page PDF, run from the same example directory:
+To export the 17-page PDF, run from the same example directory:
 
 ```sh
 node ../../../scripts/slides.mjs pdf tech-demo.pdf
@@ -66,7 +66,7 @@ cd examples/presentations/tech-demo
 node ../../../scripts/slides.mjs build
 ```
 
-Wait for `Prepared 16 animated handout states.`, then reload <http://localhost:8000/#/>. If the old page remains, use a hard reload (Cmd+Shift+R on macOS or Ctrl+Shift+R on Windows/Linux). Confirm the server serves this example's `dist/` and that any deployed copy includes the entire rebuilt directory: HTML, JavaScript, fonts, images and `manim-handout.json`.
+Wait for `Prepared 17 animated handout states.`, then reload <http://localhost:8000/#/>. If the old page remains, use a hard reload (Cmd+Shift+R on macOS or Ctrl+Shift+R on Windows/Linux). Confirm the server serves this example's `dist/` and that any deployed copy includes the entire rebuilt directory: HTML, JavaScript, fonts, images and `manim-handout.json`.
 
 Use the `slides.mjs build` command above for this repair. The repository-root `npm run build` builds the library; it does not regenerate this example's handout.
 
@@ -76,7 +76,7 @@ To run the focused cache regression check, use the repository root:
 node scripts/test-presentation-cache.mjs
 ```
 
-This test first caches an old handout, then checks that the current deck fetches the updated metadata and opens all 16 checkpoints. It also runs as part of `npm run test:tech-demo`.
+This test first caches an old handout, then checks that the current deck fetches the updated metadata and opens all 17 checkpoints. It also runs as part of `npm run test:tech-demo`.
 
 ## Python presentation
 
@@ -103,7 +103,7 @@ npm run typecheck:presentations
 npm run test:tech-demo
 ```
 
-The browser checks cover all 16 PDF pages, selectable text, backward navigation, offline assets and handout cache revalidation. Reports and PDF previews are written to `qualification-results/tech-demo/`. Formula source is selectable in the browser; PDF text extraction depends on Chromium.
+The browser checks cover all 17 PDF pages, selectable text, backward navigation, offline assets and handout cache revalidation. Reports and PDF previews are written to `qualification-results/tech-demo/`. Formula source is selectable in the browser; PDF text extraction depends on Chromium.
 
 ## Attribution
 

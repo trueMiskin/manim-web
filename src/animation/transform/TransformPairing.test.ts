@@ -38,6 +38,25 @@ function makeLinearClosedSquare(x0: number, y0: number, x1: number, y1: number):
 }
 
 describe('TransformPairing core', () => {
+  // MIGRATION: open paths with equal topology retain their directed anchor order.
+  it('preserves open ray endpoints when the bend changes direction', () => {
+    const source = new VMobject().setPointsAsCorners([
+      [-5, 1, 0],
+      [-0.2, 1, 0],
+      [0.2, 0.9, 0],
+      [3, 0, 0],
+    ]);
+    const target = new VMobject().setPointsAsCorners([
+      [-5, 1, 0],
+      [-0.2, 1, 0],
+      [0.2, 1.1, 0],
+      [4, 3, 0],
+    ]);
+    const aligned = alignVmobjectPair(source, target);
+    expect(aligned.startPoints).toEqual(source.getLocalPoints());
+    expect(aligned.targetPoints).toEqual(target.getLocalPoints());
+  });
+
   it('treats subpath lengths that do not match the point count as stale and does not throw', () => {
     // Stale/mismatched subpath metadata (sum 4 != 5 points) is a normal
     // lifecycle occurrence: a transform override, or base topology, outlives a

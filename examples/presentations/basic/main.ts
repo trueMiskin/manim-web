@@ -27,6 +27,7 @@ const content = presentation({
     topic('geometry', [sceneSlides('circle', () => import('./scene'))]),
     topic('text', [sceneSlides('styles', () => import('./text'))]),
     topic('coordinates', [sceneSlides('point', () => import('./coordinates'))]),
+    topic('matrices', [sceneSlides('product', () => import('./matrix'))]),
   ],
 });
 

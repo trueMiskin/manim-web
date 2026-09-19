@@ -47,20 +47,29 @@ export default {
           new Create(convexRays),
         ),
     );
+    const concave = makeLens('concave');
+    const concaveRays = lensRays('concave');
+    await scene.step(
+      {
+        id: 'optics-concave',
+        title: 'Change to a concave lens',
+        notes:
+          'The lens becomes concave and the rays diverge. Pause before turning it into a room.',
+      },
+      () =>
+        scene.play(
+          new ReplacementTransform(convex, concave, { duration: 1 }),
+          new ReplacementTransform(convexRays, concaveRays, { duration: 1 }),
+        ),
+    );
     await scene.step(
       {
         id: 'optics-morph',
         title: 'From a lens to a room',
         notes:
-          'The lens turns concave and morphs into a room outline. Three light pulses follow paths with four wall reflections each.',
+          'The concave lens morphs into a room outline. Three light pulses follow paths with four wall reflections each.',
       },
       async () => {
-        const concave = makeLens('concave');
-        const concaveRays = lensRays('concave');
-        await scene.play(
-          new ReplacementTransform(convex, concave, { duration: 1 }),
-          new ReplacementTransform(convexRays, concaveRays, { duration: 1 }),
-        );
         await scene.play(
           new ReplacementTransform(concave, makeConcertHall(), { duration: 1.5 }),
           new FadeOut(concaveRays, { duration: 0.5 }),

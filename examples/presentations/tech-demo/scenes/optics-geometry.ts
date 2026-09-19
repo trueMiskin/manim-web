@@ -9,6 +9,7 @@ import {
   dotVec,
 } from '../../../../src/utils/vectors';
 import { C } from './common';
+import { resamplePointList3D } from '../../../../src/core/VMobjectTransformAlignment';
 
 export type LensType = 'convex' | 'thick_convex' | 'concave';
 export const hallVertices: Vector3Tuple[] = [
@@ -27,24 +28,29 @@ export const hallVertices: Vector3Tuple[] = [
 export function makeLens(type: LensType): VMobject {
   const angle =
     type === 'thick_convex' ? Math.PI / 2 : type === 'concave' ? Math.PI / 4 : Math.PI / 3.5;
-  const parts =
-    type === 'concave'
-      ? [
-          new Line({ start: [-0.4, 1.5, 0], end: [0.4, 1.5, 0] }),
-          new ArcBetweenPoints({ start: [0.4, 1.5, 0], end: [0.4, -1.5, 0], angle }),
-          new Line({ start: [0.4, -1.5, 0], end: [-0.4, -1.5, 0] }),
-          new ArcBetweenPoints({ start: [-0.4, -1.5, 0], end: [-0.4, 1.5, 0], angle }),
-        ]
-      : [
-          new ArcBetweenPoints({ start: [0, -1.5, 0], end: [0, 1.5, 0], angle }),
-          new ArcBetweenPoints({ start: [0, 1.5, 0], end: [0, -1.5, 0], angle }),
-        ];
+  // Match top cap, right side, bottom cap, and left side across lens types.
+  // The convex caps have zero length; they widen as the lens becomes concave.
+  const halfCap = type === 'concave' ? 0.4 : 0;
+  const sweep = type === 'concave' ? angle : -angle;
+  const parts = [
+    new Line({ start: [-halfCap, 1.5, 0], end: [halfCap, 1.5, 0] }),
+    new ArcBetweenPoints({ start: [halfCap, 1.5, 0], end: [halfCap, -1.5, 0], angle: sweep }),
+    new Line({ start: [halfCap, -1.5, 0], end: [-halfCap, -1.5, 0] }),
+    new ArcBetweenPoints({ start: [-halfCap, -1.5, 0], end: [-halfCap, 1.5, 0], angle: sweep }),
+  ];
   const points = parts.flatMap((part, index) => {
     const matrix = part._syncWorldMatrices().matrixWorld;
     // Line stores centered local points; translate them through its actual transform.
-    const world = part
-      .getLocalPoints()
-      .map((point) => new Vector3(point[0], point[1], point[2]).applyMatrix4(matrix).toArray());
+    const local = part.getLocalPoints();
+    // Split the single concave cubic into two without changing its shape.
+    // Equal side counts prevent whole-outline resampling from moving the corners.
+    const points =
+      part instanceof ArcBetweenPoints && local.length === 4
+        ? resamplePointList3D(local, 7)
+        : local;
+    const world = points.map((point) =>
+      new Vector3(point[0], point[1], point[2]).applyMatrix4(matrix).toArray(),
+    );
     return index ? world.slice(1) : world;
   });
   parts.forEach((part) => part.dispose());

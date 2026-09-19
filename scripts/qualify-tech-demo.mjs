@@ -34,7 +34,9 @@ assert.deepEqual(
 const topicCheckpoints = new Map(
   expectedTopics.map((id) => [id, assets.scenes[`${id}/${id}`].checkpoints]),
 );
-assert.ok([...topicCheckpoints.values()].every((checkpoints) => checkpoints.length === 2));
+for (const [topic, checkpoints] of topicCheckpoints) {
+  assert.equal(checkpoints.length, topic === 'optics' ? 3 : 2);
+}
 const expected = [...topicCheckpoints.values()].flat();
 assert.equal(new Set(expected.map(({ id }) => id)).size, expected.length);
 const server = await preview({
