@@ -73,6 +73,11 @@ export class Transform extends Animation {
     super.finish();
   }
 
+  override cleanUpFromScene(scene: AnimationScene): void {
+    super.cleanUpFromScene(scene);
+    this._strategy?.cleanUpFromScene?.(scene, this.target);
+  }
+
   override reset(): void {
     this._strategy?.reset?.();
     this._strategy = null;
