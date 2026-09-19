@@ -1,5 +1,5 @@
 import { Mobject } from '../../core/Mobject';
-import { Animation } from '../Animation';
+import { Animation, type AnimationScene } from '../Animation';
 
 /**
  * Contract shared by all three methods:
@@ -28,6 +28,8 @@ export interface MorphStrategy {
   begin(animation: Animation, source: Mobject, target: Mobject): void;
   interpolate(animation: Animation, source: Mobject, target: Mobject, alpha: number): void;
   finish(animation: Animation, source: Mobject, target: Mobject): void;
+  /** Adopt a final visual that cannot be represented by mutating the source. */
+  cleanUpFromScene?(scene: AnimationScene, target: Mobject): void;
   /** Remove only visual attachments introduced temporarily by this strategy. */
   reset?(): void;
 }

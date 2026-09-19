@@ -1,5 +1,5 @@
 import { Mobject } from '../../core/Mobject';
-import { Animation } from '../Animation';
+import { Animation, type AnimationScene } from '../Animation';
 import { MorphStrategy } from './MorphStrategy';
 import type { Object3D } from 'three';
 
@@ -80,7 +80,13 @@ export class FadeMorphStrategy implements MorphStrategy {
     target.opacity = this._targetSnapshot.opacity;
     target._syncToThree();
     source._markDirty();
-    // A completed fallback morph uses the target as its final visual.
+    // Keep ownership until reset or scene cleanup adopts the final visual.
+  }
+
+  /** Transfer the completed fallback visual to checkpointed scene membership. */
+  cleanUpFromScene(scene: AnimationScene, target: Mobject): void {
+    if (!this._attachedTarget) return;
+    scene.add(target);
     this._attachedTarget = null;
   }
 
