@@ -73,13 +73,18 @@ export interface SlideOptions {
   autoNext?: boolean;
 }
 
+type CompiledEvaluator = (
+  time: number,
+  segmentIndex?: number,
+  position?: 'start' | 'end',
+  mode?: 'playback',
+) => void;
+
 export class MasterTimeline extends Timeline {
-  private _evaluator?: (time: number, segmentIndex?: number, position?: 'start' | 'end') => void;
+  private _evaluator?: CompiledEvaluator;
 
   /** Install the controlled evaluator produced by sequential scene compilation. */
-  setEvaluator(
-    evaluator: (time: number, segmentIndex?: number, position?: 'start' | 'end') => void,
-  ): void {
+  setEvaluator(evaluator: CompiledEvaluator): void {
     this._evaluator = evaluator;
   }
 
@@ -167,11 +172,15 @@ export class MasterTimeline extends Timeline {
    * segment starts during this tick. seek() hides future mobjects by
    * setting opacity=0; this restores them exactly when playback crosses
    * their segment boundary (not every frame).
+   * Compiled playback displays whole 60 Hz simulation ticks; seek() evaluates
+   * fractional times exactly, and segment endpoints use their authored state.
    */
   override update(dt: number): void {
     if (this._evaluator) {
       if (!this._isPlaying) return;
-      this.seek(this._currentTime + dt);
+      if (!Number.isFinite(dt)) throw new Error('Timeline time must be finite.');
+      this._currentTime = Math.max(0, Math.min(this._currentTime + dt, this.getDuration()));
+      this._evaluator(this._currentTime, undefined, undefined, 'playback');
       if (this.isFinished()) this._isPlaying = false;
       return;
     }

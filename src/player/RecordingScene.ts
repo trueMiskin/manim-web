@@ -16,7 +16,9 @@ interface CompiledSegment {
 /**
  * Sequential construction context. Awaited play/wait evaluates on a fixed clock,
  * so subsequent author calculations observe the final state. Compilation retains
- * immutable checkpoints and restores them before evaluating any requested time.
+ * immutable checkpoints for arbitrary seeking. Playback advances a fixed 60 Hz
+ * clock, displaying the preceding tick (less than 1/60 s behind timeline time).
+ * Explicit seeks also evaluate the fractional tail to display the exact time.
  * Updaters must keep mutable state in mobjects (captureState for custom classes).
  */
 export class RecordingScene {
@@ -26,6 +28,7 @@ export class RecordingScene {
   private readonly _initial: SceneCheckpoint;
   private readonly _snapshotCache = new WeakMap<Mobject, MobjectState>();
   private _activeSegment: Segment | undefined;
+  private _activeElapsed: number | undefined;
 
   constructor(
     private _realScene: Scene,
@@ -113,29 +116,46 @@ export class RecordingScene {
     await prepareMobjects(this._realScene.mobjects);
     const finalState = this._capture();
     this._masterTimeline.finalizeSlides();
-    this._masterTimeline.setEvaluator((time, segmentIndex, position) => {
-      const previousActive = this._resetActiveSegment();
+    this._masterTimeline.setEvaluator((time, segmentIndex, position, mode) => {
       const compiled =
         segmentIndex === undefined
           ? this._compiled.find(({ segment }) => time <= segment.endTime)
           : this._compiled[segmentIndex];
       if (!compiled) {
+        this._resetActiveSegment();
         restoreScene(this._realScene, finalState, false);
         return;
       }
       const { segment, start, end } = compiled;
       if (position !== 'start' && time >= segment.endTime) {
+        this._resetActiveSegment();
         restoreScene(this._realScene, end, false);
         return;
       }
+      const requested = Math.max(0, time - segment.startTime);
+      const wholeTick = Math.floor(requested * 60 + 1e-9) / 60;
+      const elapsed = mode === 'playback' ? wholeTick : requested;
+      const canContinue =
+        position === undefined &&
+        this._activeSegment === segment &&
+        this._activeElapsed !== undefined &&
+        (mode === 'playback' ? elapsed >= this._activeElapsed : elapsed > this._activeElapsed);
       Animation.withExternalState(this._collectAll(segment.animations), () => {
-        if (previousActive !== segment) {
-          for (const animation of segment.animations) animation.reset();
+        let previous = this._activeElapsed;
+        if (!canContinue) {
+          const previousActive = this._resetActiveSegment();
+          if (previousActive !== segment) {
+            for (const animation of segment.animations) animation.reset();
+          }
+          restoreScene(this._realScene, start, false);
+          this._activeSegment = segment;
+          this._begin(segment.animations);
+          previous = undefined;
         }
-        restoreScene(this._realScene, start, false);
-        this._activeSegment = segment;
-        this._begin(segment.animations);
-        this._advance(segment, Math.max(0, time - segment.startTime));
+        this._advance(segment, elapsed, previous);
+        // A fractional seek must never become an extra integration step in
+        // subsequent fixed-clock playback. Rebuild once when it resumes.
+        this._activeElapsed = Math.abs(elapsed - wholeTick) <= 1e-9 ? wholeTick : undefined;
       });
     });
   }
@@ -149,6 +169,7 @@ export class RecordingScene {
   private _resetActiveSegment(): Segment | undefined {
     const segment = this._activeSegment;
     this._activeSegment = undefined;
+    this._activeElapsed = undefined;
     if (segment) {
       Animation.withExternalState(this._collectAll(segment.animations), () => {
         for (const animation of segment.animations) animation.reset();
@@ -183,19 +204,23 @@ export class RecordingScene {
     }
   }
 
-  private _advance(segment: Segment, elapsed: number): void {
+  /**
+   * @pre elapsed >= 0
+   * @pre previous === undefined || (previous <= elapsed && Math.abs(previous * 60 - Math.round(previous * 60)) < 1e-7)
+   */
+  private _advance(segment: Segment, elapsed: number, previous?: number): void {
     const duration = segment.endTime - segment.startTime;
-    let previous = 0;
+    let lastTime = previous ?? 0;
     const tick = (time: number) => {
-      for (const animation of segment.animations) animation.update(time - previous, time);
-      for (const object of this._realScene.mobjects) object.update(time - previous);
-      this.camera.updateFrame(time - previous);
-      previous = time;
+      for (const animation of segment.animations) animation.update(time - lastTime, time);
+      for (const object of this._realScene.mobjects) object.update(time - lastTime);
+      this.camera.updateFrame(time - lastTime);
+      lastTime = time;
     };
-    tick(0);
+    if (previous === undefined) tick(0);
     const ticks = Math.floor(elapsed * 60 + 1e-9);
-    for (let i = 1; i <= ticks; i++) tick(i / 60);
-    if (elapsed - previous > 1e-9) tick(elapsed);
+    for (let i = Math.floor(lastTime * 60 + 1e-9) + 1; i <= ticks; i++) tick(i / 60);
+    if (elapsed - lastTime > 1e-9) tick(elapsed);
     if (elapsed >= duration) {
       for (const animation of this._collectAll(segment.animations))
         animation.cleanUpFromScene(this._realScene);
