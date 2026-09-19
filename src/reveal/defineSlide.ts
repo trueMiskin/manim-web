@@ -102,7 +102,12 @@ export class SlideContext extends SlideRegion {
   }
 
   private showObject(object: Mobject): void {
-    const root = this.visibility.reveal(object, true);
+    let root = object;
+    while (root.parent) root = root.parent;
+    // Removal hides the whole tree regardless of its retained authored opacity.
+    // Returning one child must not expose the detached root's other descendants.
+    if (!this.scene.scene.mobjects.has(root)) this.visibility.hideDetached(root);
+    this.visibility.reveal(object, true);
     if (!this.scene.scene.mobjects.has(root)) this.scene.add(root);
   }
 

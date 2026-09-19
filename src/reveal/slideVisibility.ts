@@ -11,6 +11,18 @@ export class SlideVisibility {
     });
   }
 
+  /**
+   * Conceal a detached authored tree before selectively reintroducing a child.
+   * @post this.authored.has(object) => object.opacity === 0
+   */
+  hideDetached(object: Mobject): void {
+    if (!this.authored.has(object)) return;
+    this.visit(object, (child) => {
+      child.getThreeObject().visible = false;
+      Mobject.prototype.setStrokeOpacity.call(child, 0);
+    });
+  }
+
   /** Expose a newly animated subtree without exposing its unrevealed siblings. */
   animate(object: Mobject): void {
     if (!this.authored.has(object)) return;
