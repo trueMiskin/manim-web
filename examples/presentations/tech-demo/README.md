@@ -28,6 +28,10 @@ npm run dev
 
 Left/right changes topic, up/down changes checkpoint, Space advances, P pauses, and R replays. Text is selectable while paused. The optics topic has three stops: convex lens, concave lens, then the room morph. Other topics have two stops.
 
+Use the **Color palette** selector beside the playback and print controls to switch between **dark** and **light**. Dark preserves the original pure-black background; light uses a white background and darker diagram colors. Both palettes are bundled locally and work offline. Switching rebuilds the scenes, previews, and print snapshots, then returns to the current checkpoint, paused. Press **R** to replay it. Fonts and layout stay the same.
+
+Edit [palettes.ts](palettes.ts) to change the standard text and background roles or custom colors such as `cyan`, `amber`, and `tableSurface`. The same named color can be cyan in the dark palette and dark blue in the light palette. `defineSlide` builders read `s.colors`; the direct 3D builder receives `{ colors }` as its second argument. The heatmaps, numerical vector colors, and their table labels keep their scientific color scale. Set `palette: 'light'` in [deck.ts](deck.ts) to start and export in light colors. See the [palette API](../API.md#switch-color-palettes) for configuration and `setPalette(...)`.
+
 Build a portable site from the repository root:
 
 ```sh
@@ -59,7 +63,7 @@ If the page displays:
 
 > Presentation assets do not match this deck. Rebuild the handout assets.
 
-The loaded deck and `manim-handout.json` disagree on their title, dimensions or asset format version. This can happen after changing the deck or when a browser caches an older handout. The loader now revalidates the handout with the server on each load to prevent stale cached metadata from causing this error.
+The loaded deck and `manim-handout.json` disagree on their title, dimensions, selected palette, palette colors, or asset format version. This can happen after changing the deck or when a browser caches an older handout. The loader now revalidates the handout with the server on each load to prevent stale cached metadata from causing this error.
 
 From the repository root, rebuild the example and its handout together:
 
@@ -105,7 +109,7 @@ npm run typecheck:presentations
 npm run test:tech-demo
 ```
 
-The browser checks cover the original text-replacement sequence and caption placement, all 17 PDF pages, selectable text, backward navigation, offline assets and handout cache revalidation. Reports and PDF previews are written to `qualification-results/tech-demo/`. Formula source is selectable in the browser; PDF text extraction depends on Chromium.
+The browser checks cover the original text-replacement sequence and caption placement, all 17 PDF pages, selectable text, backward navigation, palette switching, offline assets and handout cache revalidation. Reports and PDF previews are written to `qualification-results/tech-demo/`. Formula source is selectable in the browser; PDF text extraction depends on Chromium.
 
 ## Attribution
 

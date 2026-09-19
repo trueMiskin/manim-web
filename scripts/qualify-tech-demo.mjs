@@ -419,6 +419,78 @@ try {
       `Verified ${topic}: all ${checkpointIds.length} checkpoints deterministic.\n`,
     );
   }
+  // MIGRATION: switching a palette changes colors while preserving authored
+  // content, layout, route and checkpoint count, and switching back restores it.
+  const activeCheckpoint = expected.at(-1).id;
+  const darkSnapshot = await fingerprint(activeCheckpoint);
+  const originalHash = await page.evaluate(() => globalThis.location.hash);
+  const paletteControl = page.getByRole('combobox', { name: 'Color palette' });
+  assert.equal(await paletteControl.inputValue(), 'dark');
+  const paletteStart = performance.now();
+  await paletteControl.selectOption('light');
+  await page.waitForFunction(
+    () => {
+      const presentation = globalThis.__MANIM_PRESENTATION__;
+      const select = globalThis.document.querySelector('[aria-label="Color palette"]');
+      return (
+        presentation.error ||
+        (presentation.ready && presentation.palette === 'light' && !select.disabled)
+      );
+    },
+    undefined,
+    { timeout: 300000 },
+  );
+  assert.equal(await page.evaluate(() => globalThis.__MANIM_PRESENTATION__.error), undefined);
+  assert.equal(await page.evaluate(() => globalThis.location.hash), originalHash);
+  const lightSnapshot = await fingerprint(activeCheckpoint);
+  const layout = (snapshot) =>
+    snapshot.text.map(({ text, kind, source, font, bounds, transform, width, height }) => ({
+      text,
+      kind,
+      source,
+      font,
+      bounds,
+      transform,
+      width,
+      height,
+    }));
+  assert.deepEqual(
+    layout(lightSnapshot),
+    layout(darkSnapshot),
+    'Palette switches preserve typography and layout.',
+  );
+  assert.notDeepEqual(lightSnapshot.text, darkSnapshot.text, 'Visible text follows the palette.');
+  assert.notEqual(lightSnapshot.image, darkSnapshot.image, 'Captured graphics follow the palette.');
+  const lightAssets = await page.evaluate(() => globalThis.__MANIM_PRESENTATION__.exportAssets());
+  assert.equal(lightAssets.palette.name, 'light');
+  const subtitle = lightAssets.scenes['text/text'].snapshots['text-intro'].text.find(
+    ({ text }) => text === 'Text, geometry and scientific animation',
+  );
+  assert.equal(subtitle.color.toLowerCase(), lightAssets.palette.colors.cyan.toLowerCase());
+  assert.equal(await page.locator('.manim-page').count(), expected.length);
+  const pageBackgrounds = await page
+    .locator('.manim-page')
+    .evaluateAll((pages) => pages.map((page) => globalThis.getComputedStyle(page).backgroundColor));
+  assert.ok(pageBackgrounds.every((color) => color === 'rgb(255, 255, 255)'));
+  await page.screenshot({ path: fileURLToPath(new URL('light-palette.png', output)) });
+  report.palette = {
+    lightSwitchMs: performance.now() - paletteStart,
+    checkpoint: activeCheckpoint,
+  };
+  await page.evaluate(() => globalThis.__MANIM_PRESENTATION__.setPalette('dark'));
+  const restoredSnapshot = await fingerprint(activeCheckpoint);
+  assert.equal(restoredSnapshot.image, darkSnapshot.image);
+  assert.deepEqual(layout(restoredSnapshot), layout(darkSnapshot));
+  assert.deepEqual(
+    restoredSnapshot.text.map(({ color }) => color),
+    darkSnapshot.text.map(({ color }) => color),
+  );
+  assert.equal(await page.evaluate(() => globalThis.location.hash), originalHash);
+  assert.equal(await paletteControl.inputValue(), 'dark');
+  process.stdout.write(
+    'Verified light/dark palette switching, layout, snapshots and route restoration.\n',
+  );
+
   report.resources = await page.evaluate(() =>
     performance.getEntriesByType('resource').map((entry) => ({
       url: entry.name,

@@ -27,4 +27,12 @@ export {
   type SlideFigure,
 } from './slideBlocks';
 export { DEFAULT_SLIDE_THEME, type SlideTheme, type SlideThemeOptions } from './slideTheme';
+export {
+  definePalettes,
+  darkColors,
+  lightColors,
+  type ColorPalette,
+  type PaletteCollection,
+  type ResolvedPalette,
+} from './palettes';
 export type { SlidePlacement, SlideAlignment } from './slideLayout';

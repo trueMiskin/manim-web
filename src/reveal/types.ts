@@ -2,6 +2,7 @@ import type { Player, PlayerOptions } from '../player/Player';
 import type { RecordingScene } from '../player/RecordingScene';
 import type { Scene, SceneOptions } from '../core/Scene';
 import type { Slide } from '../animation/MasterTimeline';
+import type { ColorPalette, PaletteCollection, ResolvedPalette } from './palettes';
 
 export interface SlideAppearance {
   title?: string;
@@ -27,11 +28,23 @@ export interface StaticSlide extends SlideAppearance {
   loop?: boolean;
 }
 
+export interface SceneBuildContext {
+  readonly colors: ColorPalette;
+  readonly palette?: string;
+}
+
 export interface SceneDefinition {
-  build: (scene: RecordingScene) => Promise<void>;
+  build: (scene: RecordingScene, context?: SceneBuildContext) => Promise<void>;
+  /** Bind inherited colors before creating the player (used by defineSlide). */
+  withPalette?: (context: SceneBuildContext) => BoundSceneDefinition;
   /** Return a fresh scene on every call; compilation and live playback are separate. */
   createScene?: (container: HTMLElement, options: SceneOptions) => Scene;
   options?: Omit<PlayerOptions, 'scene' | 'ui' | 'keyboard' | 'pointer' | 'ownsScene'>;
+}
+
+/** A scene whose colors are already bound; usable directly with Player.sequence. */
+export interface BoundSceneDefinition extends SceneDefinition {
+  build: (scene: RecordingScene, context?: SceneBuildContext) => Promise<void>;
 }
 
 export interface SceneSlides extends SlideAppearance {
@@ -54,6 +67,9 @@ export interface PresentationDefinition {
   topics: readonly PresentationTopic[];
   width?: number;
   height?: number;
+  palettes?: PaletteCollection;
+  /** Initial palette name. Defaults to the first palette when omitted. */
+  palette?: string;
   /** Default: all meaningful pauses. IDs use topic/scene/checkpoint. */
   handout?: 'all' | 'final' | readonly string[];
 }
@@ -70,6 +86,8 @@ export interface PresentationAssets {
   title: string;
   width: number;
   height: number;
+  /** Absent for decks that do not configure palettes. */
+  palette?: ResolvedPalette;
   scenes: Record<string, CompiledScene>;
 }
 

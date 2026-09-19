@@ -1,5 +1,7 @@
 import { Player } from '../player/Player';
+import { darkColors, resolvePresentationPalette, type ResolvedPalette } from './palettes';
 import type {
+  BoundSceneDefinition,
   PresentationAssets,
   PresentationDefinition,
   SceneDefinition,
@@ -17,9 +19,20 @@ export function presentationSize(definition: PresentationDefinition): {
   return { width: definition.width ?? 1280, height: definition.height ?? 720 };
 }
 
-export async function loadScene(slides: SceneSlides): Promise<SceneDefinition> {
+export async function loadScene(
+  slides: SceneSlides,
+  definition?: PresentationDefinition,
+): Promise<BoundSceneDefinition> {
+  const palette = definition && resolvePresentationPalette(definition);
+  const context = Object.freeze({ colors: palette?.colors ?? darkColors, palette: palette?.name });
   const loaded = await slides.load();
-  return 'default' in loaded ? loaded.default : loaded;
+  const scene = 'default' in loaded ? loaded.default : loaded;
+  if (scene.withPalette) return scene.withPalette(context);
+  return {
+    ...scene,
+    options: { ...(palette && { backgroundColor: palette.colors.background }), ...scene.options },
+    build: (recording) => scene.build(recording, context),
+  };
 }
 
 export function createScenePlayer(
@@ -49,10 +62,15 @@ export function createScenePlayer(
 export async function compilePresentation(
   definition: PresentationDefinition,
 ): Promise<PresentationAssets> {
+  const palette = resolvePresentationPalette(definition);
+  const resolvedDefinition = palette
+    ? { ...definition, palettes: { [palette.name]: palette.colors }, palette: palette.name }
+    : definition;
   const assets: PresentationAssets = {
     version: 1,
     title: definition.title,
     ...presentationSize(definition),
+    ...(palette && { palette }),
     scenes: {},
   };
   const staging = document.createElement('div');
@@ -64,7 +82,7 @@ export async function compilePresentation(
     for (const topic of definition.topics) {
       for (const slide of topic.slides) {
         if (slide.kind !== 'scene') continue;
-        const scene = await loadScene(slide);
+        const scene = await loadScene(slide, resolvedDefinition);
         const player = createScenePlayer(staging, scene, definition, slide);
         try {
           await player.sequence(scene.build);
@@ -91,6 +109,15 @@ export async function compilePresentation(
   }
 }
 
+function samePalette(first?: ResolvedPalette, second?: ResolvedPalette): boolean {
+  if (!first || !second) return first === second;
+  return (
+    first.name === second.name &&
+    Object.keys(first.colors).length === Object.keys(second.colors).length &&
+    Object.entries(first.colors).every(([key, color]) => second.colors[key] === color)
+  );
+}
+
 export async function loadPresentationAssets(
   source: string | PresentationAssets | undefined,
   definition: PresentationDefinition,
@@ -113,7 +140,8 @@ export async function loadPresentationAssets(
     assets.version !== 1 ||
     assets.width !== width ||
     assets.height !== height ||
-    assets.title !== definition.title
+    assets.title !== definition.title ||
+    !samePalette(assets.palette, resolvePresentationPalette(definition))
   ) {
     throw new Error('Presentation assets do not match this deck. Rebuild the handout assets.');
   }

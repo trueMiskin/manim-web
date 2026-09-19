@@ -1,16 +1,21 @@
 import { FadeIn, FadeOut, MathTex, Tex, TransformMatchingTex, Write } from '../../../../src';
 import { defineSlide } from '../../../../src/reveal';
-import { C, label, SOURCE_FONT_BOLD, TECH_THEME } from './common';
+import { label, SOURCE_FONT_BOLD, TECH_THEME } from './common';
 
 export default defineSlide(
   { title: 'manim-web tech demo', titleVisible: false, theme: TECH_THEME },
   async (s) => {
-    const subtitle = label('Text, geometry and scientific animation', 30, C.cyan, [0, 1.7, 0]);
-    const capabilities = label('Write • transform • animate • pause', 24, C.text, [0, 0, 0]);
+    const subtitle = label(
+      'Text, geometry and scientific animation',
+      30,
+      s.colors.cyan,
+      [0, 1.7, 0],
+    );
+    const capabilities = label('Write • transform • animate • pause', 24, s.colors.text, [0, 0, 0]);
     const controls = label(
       '← → topics    ↑ ↓ steps    Space next    R replay    P pause',
       18,
-      C.muted,
+      s.colors.muted,
       [0, -2, 0],
     );
     await s.step(
@@ -30,13 +35,13 @@ export default defineSlide(
       ...SOURCE_FONT_BOLD,
       latex: '{{Animated}} {{text}}',
       fontSize: 42,
-      color: C.cyan,
+      color: s.colors.cyan,
     });
     const to = new Tex({
       ...SOURCE_FONT_BOLD,
       latex: '{{Animated}} {{equations}}',
       fontSize: 42,
-      color: C.cyan,
+      color: s.colors.cyan,
     });
     await Promise.all([from.waitForRender(), to.waitForRender()]);
     from.moveTo([0, 1.4, 0]);
@@ -44,9 +49,14 @@ export default defineSlide(
     const equation = new MathTex({
       latex: String.raw`E(x)=\sum_{k=1}^{N}a_k e^{i\phi_k(x)}`,
       fontSize: 40,
-      color: C.text,
+      color: s.colors.text,
     }).moveTo([0, -0.4, 0]);
-    const caption = label('Selectable text and LaTeX at each pause', 22, C.muted, [0, -2.2, 0]);
+    const caption = label(
+      'Selectable text and LaTeX at each pause',
+      22,
+      s.colors.muted,
+      [0, -2.2, 0],
+    );
     await s.step(
       {
         id: 'text-math',

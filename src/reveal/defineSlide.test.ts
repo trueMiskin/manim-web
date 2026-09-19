@@ -14,6 +14,9 @@ import type { AnimationOptions } from '../animation/Animation';
 import type { MathTex } from '../mobjects/text/MathTex';
 import type { RichParagraph } from '../mobjects/text/RichParagraph';
 import type { SlideBullets } from './slideBlocks';
+import { darkColors, definePalettes, lightColors } from './palettes';
+import { loadScene } from './compile';
+import { presentation, sceneSlides, topic } from './authoring';
 
 const players: Player[] = [];
 
@@ -44,6 +47,88 @@ function makePlayer(): Player {
 }
 
 describe('content slide authoring', () => {
+  // MIGRATION: binding the same authored slide to independent decks changes only
+  // inherited colors; explicit overrides and geometry remain identical.
+  it('inherits each deck palette without mutating another build', async () => {
+    const palettes = definePalettes({
+      dark: { ...darkColors, ray: '#00ffff' },
+      light: { ...lightColors, ray: '#003b8e' },
+    });
+    const contexts: Array<Record<string, string>> = [];
+    const authored = defineSlide(
+      { title: 'Palette', theme: { colors: { accent: '#cc0000' } } },
+      async (s) => {
+        contexts.push(s.colors);
+        const text = s.paragraph('Inherited');
+        const ray = s.paragraph('Ray', { color: 'ray' });
+        const fixed = s.paragraph('Fixed', { color: 'accent' });
+        await s.step({ id: 'content' }, () => s.show(text, ray, fixed));
+      },
+    );
+    const slide = sceneSlides('colors', async () => authored);
+    const deck = presentation({ title: 'Palettes', palettes, topics: [topic('one', [slide])] });
+    const dark = await loadScene(slide, deck);
+    const light = await loadScene(slide, { ...deck, palette: 'light' });
+    expect(dark.options?.backgroundColor).toBe(darkColors.background);
+    expect(light.options?.backgroundColor).toBe(lightColors.background);
+    const first = makePlayer();
+    const second = makePlayer();
+    await first.sequence(dark.build);
+    await second.sequence(light.build);
+    first.seekCheckpoint('content');
+    second.seekCheckpoint('content');
+    expect(contexts.map((colors) => [colors.text, colors.ray, colors.accent])).toEqual([
+      [darkColors.text, '#00ffff', '#cc0000'],
+      [lightColors.text, '#003b8e', '#cc0000'],
+    ]);
+    const colors = (player: Player) =>
+      Object.fromEntries(player.inspectText().map((run) => [run.text, run.color]));
+    expect(colors(first)).toMatchObject({
+      Inherited: darkColors.text,
+      Ray: '#00ffff',
+      Fixed: '#cc0000',
+    });
+    expect(colors(second)).toMatchObject({
+      Inherited: lightColors.text,
+      Ray: '#003b8e',
+      Fixed: '#cc0000',
+    });
+    const geometry = (player: Player) =>
+      player.inspectText().map(({ width, height, transform }) => ({ width, height, transform }));
+    expect(geometry(first)).toEqual(geometry(second));
+  });
+
+  // MIGRATION: recompiling after a palette edit updates text/background colors
+  // without changing text bounds or the colors of explicitly styled diagrams.
+  it('resolves the current palette for each new scene', async () => {
+    const colors = { background: '#000000', text: '#ffffff' };
+    const definition = defineSlide({ title: 'Theme', theme: { colors } }, async (s) => {
+      const diagram = new Circle({ color: '#00ffff' });
+      await s.step({ id: 'content' }, () => s.show(diagram));
+    });
+    const original = makePlayer();
+    await original.sequence(definition.build);
+    original.seekCheckpoint('content');
+    const before = original.inspectText();
+    colors.background = '#ffffff';
+    colors.text = '#222222';
+    const updated = makePlayer();
+    await updated.sequence(definition.build);
+    updated.seekCheckpoint('content');
+    expect(definition.options?.backgroundColor).toBe('#ffffff');
+    expect(updated.inspectText().map((run) => run.color)).toEqual(before.map(() => '#222222'));
+    const layout = (player: Player) =>
+      player
+        .inspectText()
+        .map(({ width, height, transform, font }) => ({ width, height, transform, font }));
+    expect(layout(updated)).toEqual(layout(original));
+    expect(
+      [...updated.scene.mobjects].some(
+        (object) => object instanceof Circle && object.color === '#00ffff',
+      ),
+    ).toBe(true);
+  });
+
   // MIGRATION: titles obey the same authored-opacity restoration as body blocks,
   // whether initially visible or introduced through an explicit animation;
   // an omitted title alignment centers the title.

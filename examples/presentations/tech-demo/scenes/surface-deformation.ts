@@ -1,5 +1,5 @@
 import { Surface3D, type Vector3Tuple } from '../../../../src';
-import { C } from './common';
+import type { ColorPalette } from '../../../../src/reveal';
 
 function surfacePoint(u: number, v: number, shape: number, phase: number): Vector3Tuple {
   const ripple = 0.7 * Math.sin(2 * u - phase) * Math.cos(2 * v);
@@ -13,14 +13,18 @@ export class DeformingSurface extends Surface3D {
   private shape: number;
   private phase: number;
 
-  constructor(shape = 0, phase = 0) {
+  constructor(
+    private readonly colors: ColorPalette,
+    shape = 0,
+    phase = 0,
+  ) {
     super({
       func: (u, v) => surfacePoint(u, v, shape, phase),
       uRange: [-2.2, 2.2],
       vRange: [-2.2, 2.2],
       uResolution: 24,
       vResolution: 24,
-      checkerboardColors: [C.cyan, '#176270'],
+      checkerboardColors: [colors.cyan, colors.surfaceShade],
     });
     this.shape = shape;
     this.phase = phase;
@@ -45,7 +49,7 @@ export class DeformingSurface extends Surface3D {
   }
 
   override copy(): DeformingSurface {
-    const copy = new DeformingSurface(this.shape, this.phase);
+    const copy = new DeformingSurface(this.colors, this.shape, this.phase);
     this._copyBaseAttributesInto(copy, { copyChildren: false });
     return copy;
   }

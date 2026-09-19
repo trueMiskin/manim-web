@@ -15,7 +15,8 @@ import type { RecordingScene } from '../../../../src/player/RecordingScene';
 import fieldData from '../data/states.json';
 import { SOURCE_FONT } from './source-font';
 
-export const palette = {
+// Colors on the scientific heatmaps retain the same meaning in every deck fieldColors.
+export const fieldColors = {
   text: '#F3F4F6',
   cyan: '#00FFFF',
   green: '#00E676',
@@ -41,7 +42,12 @@ export function point(value: readonly number[], offset: Point = tableCenter): Po
   return [value[0] + offset[0], value[1] + offset[1], (value[2] ?? 0) + offset[2]];
 }
 
-export function text(value: string, location: Point, fontSize = 25, color = palette.text): Text {
+export function text(
+  value: string,
+  location: Point,
+  fontSize = 25,
+  color = fieldColors.text,
+): Text {
   return new Text({
     text: value,
     fontSize,
@@ -84,7 +90,7 @@ export function makeTable(obstacleVisible = true): {
     center: point([0, 0, 0.04]),
   });
   obstacle.setStyle({ fillColor: '#22252A', fillOpacity: 1 });
-  const obstacleLabel = text('Obstacle', point([0, 0, 0.05]), 14, palette.muted);
+  const obstacleLabel = text('Obstacle', point([0, 0, 0.05]), 14, fieldColors.muted);
   const pockets = [
     [-2.5, 1.75],
     [2.5, 1.75],

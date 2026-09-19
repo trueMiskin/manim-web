@@ -10,7 +10,7 @@ import {
 } from '../../../../src';
 import { defineSlide } from '../../../../src/reveal';
 import { subVec } from '../../../../src/utils/vectors';
-import { C, TECH_THEME, label } from './common';
+import { TECH_THEME, label } from './common';
 import { lensRays, makeConcertHall, makeLens, polyline, traceHallRay } from './optics-geometry';
 
 /** Continue the room's two-hit construction through four reflections. */
@@ -28,9 +28,14 @@ function bouncingRay(origin: Vector3Tuple, angle: number): Vector3Tuple[] {
 export default defineSlide(
   { title: 'Shape morphing', theme: TECH_THEME, titleVisible: false },
   async (s) => {
-    const caption = label('A lens becomes a room; light keeps bouncing', 22, C.muted, [0, -2.8, 0]);
-    const convex = makeLens('convex');
-    const convexRays = lensRays('convex');
+    const caption = label(
+      'A lens becomes a room; light keeps bouncing',
+      22,
+      s.colors.muted,
+      [0, -2.8, 0],
+    );
+    const convex = makeLens('convex', s.colors);
+    const convexRays = lensRays('convex', s.colors.yellow);
 
     await s.step(
       {
@@ -46,8 +51,8 @@ export default defineSlide(
           new Create(convexRays),
         ),
     );
-    const concave = makeLens('concave');
-    const concaveRays = lensRays('concave');
+    const concave = makeLens('concave', s.colors);
+    const concaveRays = lensRays('concave', s.colors.yellow);
     await s.step(
       {
         id: 'optics-concave',
@@ -70,11 +75,11 @@ export default defineSlide(
       },
       async () => {
         await s.play(
-          new ReplacementTransform(concave, makeConcertHall(), { duration: 1.5 }),
+          new ReplacementTransform(concave, makeConcertHall(s.colors), { duration: 1.5 }),
           new FadeOut(concaveRays, { duration: 0.5 }),
         );
         const origin: Vector3Tuple = [-2.8, -1.1, 0];
-        const colors = [C.amber, C.cyan, C.green];
+        const colors = [s.colors.amber, s.colors.cyan, s.colors.green];
         const rays = [18, 38, 65].map((angle, index) =>
           polyline(bouncingRay(origin, (angle * Math.PI) / 180), colors[index], 2),
         );

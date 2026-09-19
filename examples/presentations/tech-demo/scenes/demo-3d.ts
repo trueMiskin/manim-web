@@ -1,6 +1,7 @@
 import { ThreeDScene, FadeIn, Rotate, UpdateFromAlphaFunc, linear } from '../../../../src';
 import type { SceneDefinition } from '../../../../src/reveal';
-import { C, heading, label } from './common';
+import { heading, label } from './common';
+import { techDemoPalettes } from '../palettes';
 import { DeformingSurface } from './surface-deformation';
 
 export default {
@@ -12,13 +13,13 @@ export default {
       theta: -Math.PI / 3,
       distance: 10,
     }),
-  async build(scene) {
-    const surface = new DeformingSurface();
-    const title = heading('Deforming surfaces');
+  async build(scene, { colors } = { colors: techDemoPalettes.dark }) {
+    const surface = new DeformingSurface(colors);
+    const title = heading('Deforming surfaces', colors.text);
     const caption = label(
       'A flat grid becomes a travelling wave, then a saddle',
       22,
-      C.muted,
+      colors.muted,
       [0, -3.2, 0],
     );
     (scene.scene as ThreeDScene).addFixedInFrameMobjects(title, caption);

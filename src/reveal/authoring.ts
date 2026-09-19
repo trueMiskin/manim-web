@@ -6,6 +6,7 @@ import type {
   SlideAppearance,
   StaticSlide,
 } from './types';
+import { definePalettes, resolvePresentationPalette } from './palettes';
 
 function assertId(id: string): void {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(id)) {
@@ -17,6 +18,7 @@ function assertId(id: string): void {
 
 /** Validate IDs once; authored scene steps supply the checkpoint metadata. */
 export function presentation(definition: PresentationDefinition): PresentationDefinition {
+  const palette = resolvePresentationPalette(definition);
   const topics = new Set<string>();
   for (const item of definition.topics) {
     assertId(item.id);
@@ -30,7 +32,9 @@ export function presentation(definition: PresentationDefinition): PresentationDe
       slides.add(slide.id);
     }
   }
-  return definition;
+  return palette
+    ? { ...definition, palettes: definePalettes(definition.palettes!), palette: palette.name }
+    : definition;
 }
 
 export function topic(

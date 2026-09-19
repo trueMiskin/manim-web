@@ -57,6 +57,58 @@ Available color roles are `text`, `muted`, `accent`, `secondary`, and `backgroun
 
 Text and formulas keep their authored font size. Layout overflow throws an explanatory error: split the content, shorten it, or choose a smaller size or spacing. This makes an accidentally crowded slide visible during preparation.
 
+### Switch color palettes
+
+Configure named palettes on the presentation. `darkColors` and `lightColors` provide the standard `background`, `text`, `muted`, `accent`, and `secondary` roles. Override them and add any colors your diagrams need:
+
+```ts
+import {
+  darkColors,
+  definePalettes,
+  lightColors,
+  manimPresentation,
+  presentation,
+  sceneSlides,
+  topic,
+} from 'manim-web/reveal';
+
+const palettes = definePalettes({
+  dark: { ...darkColors, ray: '#00ffff', obstacle: '#30363d' },
+  light: { ...lightColors, ray: '#003b8e', obstacle: '#d5dbe3' },
+});
+
+const content = presentation({
+  title: 'Light paths',
+  palettes,
+  palette: 'dark',
+  topics: [topic('optics', [sceneSlides('rays', () => import('./rays'))])],
+});
+const slides = manimPresentation(content);
+// Add slides to Reveal's plugins and initialize Reveal as usual.
+// Later, including during the presentation:
+await slides.setPalette('light');
+```
+
+`definePalettes` checks that each palette exposes the same keys. The first configured palette is the default if `palette` is omitted. Presentations with multiple palettes get a **Color palette** selector beside the playback and print controls. Switching rebuilds the scenes, overview previews, and print snapshots, then restores the current checkpoint at its end, paused. Replay the checkpoint to see its animation again. Fonts, font sizes, and layout settings stay the same; the palettes are bundled with the presentation and work offline.
+
+Standard titles, paragraphs, formulas, captions, and slide backgrounds inherit the selected colors. Use `s.colors` for custom objects and pass colors into helpers when constructing them:
+
+```ts
+import { Arrow, Create } from 'manim-web';
+import { defineSlide } from 'manim-web/reveal';
+
+export default defineSlide({ title: 'A light path' }, async (s) => {
+  const ray = new Arrow({ start: [-2, 0, 0], end: [2, 1, 0], color: s.colors.ray });
+  const caption = s.paragraph('The ray follows the selected palette.', { color: 'muted' });
+  await s.step({ id: 'ray' }, () => s.play(new Create(ray)));
+  await s.step({ id: 'caption' }, () => s.reveal(caption));
+});
+```
+
+A direct `SceneDefinition` receives the same palette as its optional second build argument. Provide a fallback for standalone playback: `async build(scene, { colors } = { colors: darkColors }) { ... }`. Import `darkColors` from `manim-web/reveal`, or use your own default palette. Read colors inside the build callback so a later rebuild picks up the selected palette. Colors written as literals remain fixed. A slide's explicit `theme.colors` or `background` overrides the inherited setting; use those overrides for content that should keep a particular appearance. Decks without palettes retain their existing behavior.
+
+Choose each palette's colors for contrast in your diagrams. Heatmaps, images, and other authored color scales can keep their own colors. The [tech demo palettes](tech-demo/palettes.ts) show shared typography with custom diagram colors, while its numerical heatmaps retain their original color scale.
+
 ### Add a visualization
 
 Regions use the same content helpers. Column weights describe proportions of the available width:
@@ -229,6 +281,8 @@ const snapshot = await player.captureCheckpoint('move');
 unsubscribe();
 player.dispose();
 ```
+
+Standalone playback uses the scene's default colors. To supply a palette explicitly, wrap the build callback: `await player.sequence((scene) => sceneDefinition.build(scene, { colors: palettes.light }));`.
 
 An instance supplied as `scene` is borrowed by default; a factory transfers ownership by default. `ownsScene` overrides that choice. UI, keyboard and pointer handlers are independently optional. `stop()` leaves a loop immediately; `pause()` preserves its current time. Events include `ready`, `frame`, `play`, `pause`, `complete` and `error`. Disposal is terminal and releases recorded state and owned resources.
 

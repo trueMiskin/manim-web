@@ -10,36 +10,36 @@ import {
 } from '../../../../src';
 import { defineSlide } from '../../../../src/reveal';
 import { addVec } from '../../../../src/utils/vectors';
-import { C, TECH_THEME, label } from './common';
+import { TECH_THEME, label } from './common';
 import { INITIAL_RX, INITIAL_TX, reflectionPath } from './billiard-geometry';
 import { billiardTable } from './billiard-table';
 
 export default defineSlide(
   { title: 'Geometry and paths', theme: TECH_THEME, titleVisible: false },
   async (s) => {
-    const table = billiardTable([0, 0.5, 0], 1);
+    const table = billiardTable(s.colors, [0, 0.5, 0], 1);
     const reflection = reflectionPath(INITIAL_TX, ['bottom']);
     const virtual = table.marker(reflection.images[1]);
     const virtualLabel = label(
       'TX′',
       18,
-      C.cyan,
+      s.colors.cyan,
       addVec(table.project(reflection.images[1]), [0, -0.27, 0]),
     );
     const construction = new DashedLine({
       start: table.project(INITIAL_RX),
       end: table.project(reflection.images[1]),
-      color: C.cyan,
+      color: s.colors.cyan,
       strokeWidth: 2.5,
     });
     const bounce = new Star({
       numPoints: 5,
       outerRadius: 0.15,
       innerRadius: 0.07,
-      color: C.amber,
+      color: s.colors.amber,
       fillOpacity: 1,
     }).moveTo(table.project(reflection.bounces[0]));
-    const ray = table.path(reflection.points, C.green, 3.5);
+    const ray = table.path(reflection.points, s.colors.green, 3.5);
 
     await s.step(
       {
@@ -52,7 +52,7 @@ export default defineSlide(
         await s.play(
           new FadeIn(s.title),
           new FadeIn(
-            label('Mirror a point, construct a path, follow it', 22, C.muted, [0, -3.2, 0]),
+            label('Mirror a point, construct a path, follow it', 22, s.colors.muted, [0, -3.2, 0]),
           ),
           new FadeIn(table.objects),
         );
