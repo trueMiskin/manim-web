@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Mobject, type UpdaterFunction } from '../core/Mobject';
 import { Scene } from '../core/Scene';
-import { Camera3D } from '../core/Camera';
+import { Camera3D, type Camera2DAspectMode } from '../core/Camera';
 import { serializeMobject, deserializeMobject, type MobjectState } from '../core/StateManager';
 import { getExplicitRenderOrder, setExplicitRenderOrder } from '../core/SceneComposition';
 
@@ -23,6 +23,7 @@ export interface SceneCheckpoint {
   readonly camera: THREE.OrthographicCamera;
   readonly frameWidth: number;
   readonly frameHeight: number;
+  readonly aspectMode: Camera2DAspectMode;
   readonly camera3D?: THREE.PerspectiveCamera;
   readonly lookAt?: THREE.Vector3;
 }
@@ -110,8 +111,9 @@ export function captureScene(
       }),
     ),
     camera: scene.camera.getCamera().clone(),
-    frameWidth: scene.camera.frameWidth,
-    frameHeight: scene.camera.frameHeight,
+    frameWidth: scene.camera.authoredFrameWidth,
+    frameHeight: scene.camera.authoredFrameHeight,
+    aspectMode: scene.camera.aspectMode,
     camera3D: camera3D?.getCamera().clone(),
     lookAt: camera3D?.lookAtTarget,
   });
@@ -168,11 +170,15 @@ function restoreContents(scene: Scene, checkpoint: SceneCheckpoint): void {
   }
   scene.camera.frameWidth = checkpoint.frameWidth;
   scene.camera.frameHeight = checkpoint.frameHeight;
+  scene.camera.aspectMode = checkpoint.aspectMode;
   scene.camera.getCamera().copy(checkpoint.camera);
+  const aspectRatio = scene.renderer.width / scene.renderer.height;
+  scene.camera.setAspectRatio(aspectRatio);
   const camera3D = perspective(scene);
   if (camera3D && checkpoint.camera3D && checkpoint.lookAt) {
     camera3D.setFov(checkpoint.camera3D.fov);
     camera3D.setLookAt(checkpoint.lookAt.toArray());
     camera3D.getCamera().copy(checkpoint.camera3D);
+    camera3D.setAspectRatio(aspectRatio);
   }
 }

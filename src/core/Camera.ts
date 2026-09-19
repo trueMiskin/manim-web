@@ -270,6 +270,7 @@ export class Camera2D {
   private _userFrameWidth: number;
   private _userFrameHeight: number;
   private _aspectMode: Camera2DAspectMode;
+  private _aspectRatio: number | undefined;
   private _frame: Camera2DFrame | null = null;
 
   /**
@@ -312,6 +313,16 @@ export class Camera2D {
    */
   get frameWidth(): number {
     return this._frameWidth;
+  }
+
+  /** Authored width before viewport fitting. @post result === this._userFrameWidth */
+  get authoredFrameWidth(): number {
+    return this._userFrameWidth;
+  }
+
+  /** Authored height before viewport fitting. @post result === this._userFrameHeight */
+  get authoredFrameHeight(): number {
+    return this._userFrameHeight;
   }
 
   /**
@@ -387,6 +398,7 @@ export class Camera2D {
    * @param aspectRatio - Width / height ratio
    */
   setAspectRatio(aspectRatio: number): void {
+    this._aspectRatio = aspectRatio;
     if (this._aspectMode === 'contain') {
       // Letterbox: keep the user's base frame fully visible. Grow whichever
       // dimension is needed so the rendered frame matches the viewport
@@ -428,6 +440,7 @@ export class Camera2D {
   updateFrame(dt: number): void {
     if (this._frame) {
       this._frame.update(dt);
+      if (this._aspectRatio !== undefined) this.setAspectRatio(this._aspectRatio);
     }
   }
 
