@@ -123,23 +123,143 @@ const normalizeText = (text) =>
     .replace(/\s+/gu, ' ')
     .trim();
 
+// MIGRATION: replacing a slide state removes its previous prose, retains the
+// persistent title, and keeps figure captions below the associated composition.
+// These expectations come from the original storyboard, independently of the build.
+function verifyStoryboard(id, snapshot) {
+  const prose = snapshot.text.filter(({ kind }) => kind === 'text');
+  const text = normalizeText(prose.map(({ text }) => text).join(' '));
+  const includes = (phrase) => text.includes(normalizeText(phrase));
+  if (id === 'text-intro' || id === 'text-math') {
+    assert.ok(includes('manim-web tech demo'), `${id}: persistent title`);
+    for (const phrase of [
+      'Text, geometry and scientific animation',
+      'Write • transform • animate • pause',
+      '← → topics',
+    ])
+      assert.equal(includes(phrase), id === 'text-intro', `${id}: intro visibility: ${phrase}`);
+    assert.equal(
+      includes('Selectable text and LaTeX at each pause'),
+      id === 'text-math',
+      `${id}: equation caption visibility`,
+    );
+  }
+  if (id === 'formulas-reflection' || id === 'formulas-refraction') {
+    assert.equal(includes('Reflection'), id === 'formulas-reflection', `${id}: old label`);
+    assert.equal(includes('Refraction'), id === 'formulas-refraction', `${id}: new label`);
+    assert.equal(
+      includes('Matching symbols move as the ray changes'),
+      id === 'formulas-refraction',
+      `${id}: caption follows the morph`,
+    );
+  }
+  const captions = {
+    'text-math': 'Selectable text and LaTeX at each pause',
+    'formulas-refraction': 'Matching symbols move as the ray changes',
+    'optics-convex': 'A lens becomes a room; light keeps bouncing',
+    'optics-concave': 'A lens becomes a room; light keeps bouncing',
+    'optics-morph': 'A lens becomes a room; light keeps bouncing',
+  };
+  const caption = captions[id];
+  if (caption) {
+    // A RichParagraph exposes words and spaces as separate selectable runs.
+    let captionRuns;
+    for (let start = 0; start < prose.length && !captionRuns; start++) {
+      for (let end = start + 1; end <= prose.length; end++) {
+        const candidate = prose.slice(start, end);
+        const text = normalizeText(candidate.map(({ text }) => text).join(''));
+        if (text === caption) {
+          captionRuns = candidate;
+          break;
+        }
+        if (text.length > caption.length) break;
+      }
+    }
+    assert.ok(captionRuns, `${id}: complete selectable caption`);
+    assert.ok(
+      captionRuns.every((run) => run.transform[5] > assets.height * 0.72),
+      `${id}: caption below the composition`,
+    );
+    const left = Math.min(...captionRuns.map((run) => run.transform[4]));
+    const right = Math.max(
+      ...captionRuns.map((run) => run.transform[4] + run.transform[0] * run.width),
+    );
+    const center = (left + right) / 2;
+    assert.ok(Math.abs(center - assets.width / 2) < 2, `${id}: centered figure caption`);
+  }
+}
+
 function verifyProse(id, extractedText, snapshot) {
   const runs = snapshot.text
     .filter(({ kind }) => kind === 'text')
     .map(({ text }) => normalizeText(text))
     .filter(Boolean);
-  // Longest first prevents short labels from consuming a substring of a longer
-  // prose run. Repeated runs must have repeated counterparts in the PDF.
-  let available = normalizeText(extractedText);
-  for (const run of [...runs].sort((a, b) => b.length - a.length)) {
-    const position = available.indexOf(run);
-    assert.ok(position !== -1, `${id}: PDF omits selectable prose ${JSON.stringify(run)}`);
-    available = available.slice(0, position) + '\0' + available.slice(position + run.length);
+  // Rich paragraphs split prose into runs, including punctuation beside inline
+  // math. Assign distinct literal matches instead of greedily consuming a label
+  // from a longer paragraph (e.g. "n₂ = 1.5" inside "n₂ = 1.5.").
+  const available = normalizeText(extractedText);
+  const groups = [...new Set(runs)].map((text) => {
+    const positions = [];
+    for (
+      let offset = available.indexOf(text);
+      offset !== -1;
+      offset = available.indexOf(text, offset + 1)
+    )
+      positions.push(offset);
+    return { text, count: runs.filter((run) => run === text).length, positions };
+  });
+  const occupied = new Uint8Array(available.length);
+  function assign(remaining) {
+    if (remaining === 0) return true;
+    let selected;
+    let choices;
+    for (const group of groups) {
+      if (group.count === 0) continue;
+      const free = group.positions.filter(
+        (start) => !occupied.subarray(start, start + group.text.length).some(Boolean),
+      );
+      if (free.length < group.count) return false;
+      if (
+        !selected ||
+        free.length - group.count < choices.length - selected.count ||
+        (free.length - group.count === choices.length - selected.count &&
+          group.text.length > selected.text.length)
+      ) {
+        selected = group;
+        choices = free;
+      }
+    }
+    selected.count--;
+    for (const start of choices) {
+      occupied.fill(1, start, start + selected.text.length);
+      if (assign(remaining - 1)) return true;
+      occupied.fill(0, start, start + selected.text.length);
+    }
+    selected.count++;
+    return false;
   }
+  assert.ok(assign(runs.length), `${id}: PDF omits selectable prose ${JSON.stringify(runs)}`);
   return runs.length;
 }
 
 try {
+  for (const { id } of expected) verifyStoryboard(id, snapshots.get(id));
+  const reflectionLabel = snapshots
+    .get('formulas-reflection')
+    .text.find(({ text }) => text === 'Reflection');
+  const refractionLabel = snapshots
+    .get('formulas-refraction')
+    .text.find(({ text }) => text === 'Refraction');
+  assert.ok(reflectionLabel && refractionLabel, 'Both formula states have a label.');
+  const labelCenter = (run) => run.transform[4] + (run.transform[0] * run.width) / 2;
+  assert.ok(
+    Math.abs(labelCenter(reflectionLabel) - labelCenter(refractionLabel)) < 1,
+    'Formula labels replace each other at the same horizontal anchor.',
+  );
+  assert.ok(
+    Math.abs(reflectionLabel.transform[5] - refractionLabel.transform[5]) < 1,
+    'Formula labels share one vertical position.',
+  );
   await openPage();
   const start = performance.now();
   await page.goto(origin);
@@ -278,7 +398,11 @@ try {
     );
     const switchMs = performance.now() - switchStart;
     const fingerprints = new Map();
-    for (const id of checkpointIds) fingerprints.set(id, digest(await fingerprint(id)));
+    for (const id of checkpointIds) {
+      const snapshot = await fingerprint(id);
+      verifyStoryboard(id, snapshot);
+      fingerprints.set(id, digest(snapshot));
+    }
     for (const id of [...checkpointIds].reverse())
       assert.equal(
         digest(await fingerprint(id)),

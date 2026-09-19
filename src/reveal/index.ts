@@ -23,6 +23,8 @@ export {
   SlideBullets,
   type SlideTextOptions,
   type SlideMathOptions,
+  type SlideFigureOptions,
+  type SlideFigure,
 } from './slideBlocks';
 export { DEFAULT_SLIDE_THEME, type SlideTheme, type SlideThemeOptions } from './slideTheme';
 export type { SlidePlacement, SlideAlignment } from './slideLayout';

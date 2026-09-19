@@ -3,6 +3,7 @@ import { RichParagraph } from '../mobjects/text/RichParagraph';
 import { Animation, type AnimationOptions } from '../animation/Animation';
 import { AnimationGroup } from '../animation/AnimationGroup';
 import { FadeIn } from '../animation/fading/FadeIn';
+import { FadeOut } from '../animation/fading/FadeOut';
 import { Write } from '../animation/creation/Create';
 import type { SlideOptions } from '../animation/MasterTimeline';
 import type { RecordingScene } from '../player/RecordingScene';
@@ -14,6 +15,8 @@ import { SlideVisibility } from './slideVisibility';
 
 export interface ContentSlideOptions {
   title: string;
+  /** Defaults to true. False reserves the title's space for an authored entrance. */
+  titleVisible?: boolean;
   theme?: SlideThemeOptions;
   options?: SceneDefinition['options'];
   createScene?: SceneDefinition['createScene'];
@@ -31,7 +34,8 @@ export class SlideContext extends SlideRegion {
   constructor(
     readonly scene: RecordingScene,
     theme: SlideTheme,
-    private readonly title: RichParagraph,
+    readonly title: RichParagraph,
+    private readonly titleVisible = true,
   ) {
     const layout = new SlideLayout(scene.camera.frameWidth, scene.camera.frameHeight, theme, title);
     super(layout, layout.root);
@@ -43,6 +47,8 @@ export class SlideContext extends SlideRegion {
 
   private async prepareContent(): Promise<void> {
     await this.layout.prepare();
+    this.visibility.hide(this.title);
+    if (this.titleVisible) this.visibility.reveal(this.title, true);
     this.scene.add(this.title);
     for (const object of this.layout.objects) {
       this.visibility.hide(object);
@@ -121,6 +127,26 @@ export class SlideContext extends SlideRegion {
     }
   }
 
+  /**
+   * Crossfade two already positioned objects without changing layout.
+   * Use a slot to give alternatives the same reserved area.
+   * @pre previous !== next
+   */
+  async replace(
+    previous: Mobject,
+    next: Mobject,
+    options: Pick<AnimationOptions, 'duration' | 'rateFunc'> = {},
+  ): Promise<void> {
+    if (previous === next) throw new Error('A replacement needs two different objects.');
+    await this.prepare();
+    this.showObject(next);
+    const timing = {
+      duration: options.duration ?? this.theme.duration,
+      rateFunc: options.rateFunc,
+    };
+    await this.play(new FadeOut(previous, timing), new FadeIn(next, timing));
+  }
+
   /** Use the ordinary Write treatment, with optional animation timing overrides. */
   async write(object: Mobject, options: AnimationOptions = {}): Promise<void> {
     await this.prepare();
@@ -152,14 +178,15 @@ export function defineSlide(
       const title = new RichParagraph({
         text: options.title,
         width: scene.camera.frameWidth - 2 * theme.margin,
-        fontFamily: theme.fontFamily,
-        fontUrl: theme.fontUrl,
+        fontFamily: theme.titleFontFamily ?? theme.fontFamily,
+        fontUrl:
+          theme.titleFontUrl ?? (theme.titleFontFamily === undefined ? theme.fontUrl : undefined),
         fontSize: theme.titleSize,
         fontWeight: 'bold',
         color: theme.colors.text,
         lineHeight: theme.lineHeight,
       });
-      const context = new SlideContext(scene, theme, title);
+      const context = new SlideContext(scene, theme, title, options.titleVisible);
       try {
         await build(context);
         await context.finish();

@@ -8,9 +8,9 @@ import {
   linear,
   type Vector3Tuple,
 } from '../../../../src';
-import type { SceneDefinition } from '../../../../src/reveal/types';
+import { defineSlide } from '../../../../src/reveal';
 import { subVec } from '../../../../src/utils/vectors';
-import { C, heading, label } from './common';
+import { C, TECH_THEME, label } from './common';
 import { lensRays, makeConcertHall, makeLens, polyline, traceHallRay } from './optics-geometry';
 
 /** Continue the room's two-hit construction through four reflections. */
@@ -25,23 +25,22 @@ function bouncingRay(origin: Vector3Tuple, angle: number): Vector3Tuple[] {
   return points;
 }
 
-export default {
-  options: { backgroundColor: C.bg },
-  async build(scene) {
-    const title = heading('Shape morphing');
+export default defineSlide(
+  { title: 'Shape morphing', theme: TECH_THEME, titleVisible: false },
+  async (s) => {
     const caption = label('A lens becomes a room; light keeps bouncing', 22, C.muted, [0, -2.8, 0]);
     const convex = makeLens('convex');
     const convexRays = lensRays('convex');
 
-    await scene.step(
+    await s.step(
       {
         id: 'optics-convex',
         title: 'Create a lens and its rays',
         notes: 'Vector geometry and seven ray paths appear together.',
       },
       () =>
-        scene.play(
-          new FadeIn(title),
+        s.play(
+          new FadeIn(s.title),
           new FadeIn(caption),
           new Create(convex),
           new Create(convexRays),
@@ -49,7 +48,7 @@ export default {
     );
     const concave = makeLens('concave');
     const concaveRays = lensRays('concave');
-    await scene.step(
+    await s.step(
       {
         id: 'optics-concave',
         title: 'Change to a concave lens',
@@ -57,12 +56,12 @@ export default {
           'The lens becomes concave and the rays diverge. Pause before turning it into a room.',
       },
       () =>
-        scene.play(
+        s.play(
           new ReplacementTransform(convex, concave, { duration: 1 }),
           new ReplacementTransform(convexRays, concaveRays, { duration: 1 }),
         ),
     );
-    await scene.step(
+    await s.step(
       {
         id: 'optics-morph',
         title: 'From a lens to a room',
@@ -70,7 +69,7 @@ export default {
           'The concave lens morphs into a room outline. Three light pulses follow paths with four wall reflections each.',
       },
       async () => {
-        await scene.play(
+        await s.play(
           new ReplacementTransform(concave, makeConcertHall(), { duration: 1.5 }),
           new FadeOut(concaveRays, { duration: 0.5 }),
         );
@@ -80,9 +79,9 @@ export default {
           polyline(bouncingRay(origin, (angle * Math.PI) / 180), colors[index], 2),
         );
         const pulses = colors.map((color) => new Dot({ point: origin, radius: 0.08, color }));
-        await scene.play(...rays.map((ray) => new Create(ray, { duration: 1 })));
-        scene.add(...pulses);
-        await scene.play(
+        await s.play(...rays.map((ray) => new Create(ray, { duration: 1 })));
+        s.scene.add(...pulses);
+        await s.play(
           ...pulses.map(
             (pulse, index) =>
               new MoveAlongPath(pulse, { path: rays[index], duration: 4, rateFunc: linear }),
@@ -91,4 +90,4 @@ export default {
       },
     );
   },
-} satisfies SceneDefinition;
+);

@@ -16,4 +16,4 @@ const deck = new Reveal(document.querySelector('.reveal') as HTMLElement, {
   hash: true,
   plugins: [Notes, plugin],
 });
-await deck.initialize();
+await deck.initialize({ transition: 'none', backgroundTransition: 'none' });

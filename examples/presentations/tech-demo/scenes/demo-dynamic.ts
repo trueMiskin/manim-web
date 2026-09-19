@@ -1,13 +1,13 @@
 import { Create, FadeIn, Star, UpdateFromAlphaFunc, linear } from '../../../../src';
-import type { SceneDefinition } from '../../../../src/reveal/types';
+import { defineSlide } from '../../../../src/reveal';
 import { addVec } from '../../../../src/utils/vectors';
-import { C, heading, label } from './common';
+import { C, TECH_THEME, label } from './common';
 import { INITIAL_RX, INITIAL_TX, reflectionPath } from './billiard-geometry';
 import { billiardTable } from './billiard-table';
 
-export default {
-  options: { backgroundColor: C.bg },
-  async build(scene) {
+export default defineSlide(
+  { title: 'Live geometry updates', theme: TECH_THEME, titleVisible: false },
+  async (s) => {
     const table = billiardTable([0, 0.25, 0], 1.15);
     const initial = reflectionPath(INITIAL_TX, ['bottom']);
     const ray = table.path(initial.points, C.green, 3.5);
@@ -20,22 +20,22 @@ export default {
       fillOpacity: 1,
     }).moveTo(table.project(initial.bounces[0]));
 
-    await scene.step(
+    await s.step(
       {
         id: 'dynamic-path',
         title: 'A path with linked geometry',
         notes: 'The receiver, bounce point and reflected path share one geometric construction.',
       },
       async () => {
-        await scene.play(
-          new FadeIn(heading('Live geometry updates')),
+        await s.play(
+          new FadeIn(s.title),
           new FadeIn(label('Move the receiver; the bounce follows', 22, C.muted, [0, -2.8, 0])),
           new FadeIn(table.objects),
         );
-        await scene.play(new Create(ray), new FadeIn(receiver), new FadeIn(bounce));
+        await s.play(new Create(ray), new FadeIn(receiver), new FadeIn(bounce));
       },
     );
-    await scene.step(
+    await s.step(
       {
         id: 'dynamic-motion',
         title: 'Update a moving path',
@@ -43,7 +43,7 @@ export default {
           'One updater moves the receiver left and recomputes the bounce point and both ray segments every frame.',
       },
       () =>
-        scene.play(
+        s.play(
           new UpdateFromAlphaFunc(
             ray,
             (_, alpha) => {
@@ -59,4 +59,4 @@ export default {
         ),
     );
   },
-} satisfies SceneDefinition;
+);

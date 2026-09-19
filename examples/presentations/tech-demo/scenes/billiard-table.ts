@@ -20,9 +20,8 @@ import {
   type WallName,
 } from './billiard-geometry';
 
-/** One uniform display transform; no depth overrides or displaced 2D planes. */
-export function billiardTable(center: Vector3Tuple = [4.25, 0.65, 0], scale = 0.72) {
-  const project = (point: Vector3Tuple): Vector3Tuple => addVec(center, scaleVec(scale, point));
+/** Build a table and its geometry in one fixed coordinate system. */
+export function billiardTable(center: Vector3Tuple = [0, 0, 0], scale = 1) {
   const rim = new RoundedRectangle({
     width: 5.32 * scale,
     height: 3.82 * scale,
@@ -40,6 +39,7 @@ export function billiardTable(center: Vector3Tuple = [4.25, 0.65, 0], scale = 0.
   })
     .setFill('#0D3B2E', 1)
     .moveTo(center);
+  const project = (point: Vector3Tuple): Vector3Tuple => addVec(center, scaleVec(scale, point));
   const pockets = ROOM_CORNERS.map(
     (point) => new Dot({ point: project(point), radius: 0.095, color: '#000000' }),
   );

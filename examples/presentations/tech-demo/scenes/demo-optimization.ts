@@ -1,7 +1,7 @@
 import { Dot, FadeIn, Group, UpdateFromAlphaFunc, VMobject, linear } from '../../../../src';
-import type { SceneDefinition } from '../../../../src/reveal/types';
+import { defineSlide } from '../../../../src/reveal';
 import optimization from '../data/optimization.json';
-import { C, heading, label } from './common';
+import { C, label, TECH_THEME } from './common';
 import {
   changeField,
   fieldForeground,
@@ -9,15 +9,13 @@ import {
   heatmap,
   makeTable,
   point,
-  tableCenter,
   text,
   vectorField,
 } from './numerical-common';
 
-export default {
-  options: { backgroundColor: C.bg },
-  async build(scene) {
-    scene.camera.frame.shift(tableCenter);
+export default defineSlide(
+  { title: 'Data-driven animation', theme: TECH_THEME, titleVisible: false },
+  async (s) => {
     const table = makeTable();
     table.base.remove(table.rxLabel);
     table.tx.moveTo(point([...optimization.initialTx, 0.12]));
@@ -34,33 +32,29 @@ export default {
     const vectors = vectorField(state);
     const trace = new VMobject().setColor(C.green).setStrokeWidth(4).setFillOpacity(0);
 
-    await scene.step(
+    await s.step(
       {
         id: 'optimization-start',
         title: 'Visualize an optimization',
         notes: 'The transmitter starts in the original smoothed field with two fixed receivers.',
       },
       async () => {
-        await scene.play(
-          new FadeIn(heading('Data-driven animation').shift(tableCenter)),
+        await s.play(
+          new FadeIn(s.title),
           new FadeIn(
-            label('One trajectory drives the marker, trail and field', 22, C.muted, [
-              tableCenter[0],
-              -2.7,
-              0,
-            ]),
+            label('One trajectory drives the marker, trail and field', 22, C.muted, [0, -2.7, 0]),
           ),
           new FadeIn(table.base),
         );
-        await scene.play(
+        await s.play(
           new FadeIn(image),
           new FadeIn(vectors),
           ...receivers.map((receiver) => new FadeIn(receiver)),
         );
-        fieldForeground(scene, table, vectors, receivers);
+        fieldForeground(s.scene, table, vectors, receivers);
       },
     );
-    await scene.step(
+    await s.step(
       {
         id: 'optimization-motion',
         title: 'Follow the complete trajectory',
@@ -68,8 +62,8 @@ export default {
           'All 100 original optimization updates animate the transmitter, its trail, the heatmap and gradient arrows together.',
       },
       async () => {
-        scene.add(trace);
-        scene.scene.addForegroundMobject(
+        s.scene.add(trace);
+        s.scene.scene.addForegroundMobject(
           trace,
           table.tx,
           table.txLabel,
@@ -94,7 +88,7 @@ export default {
             },
             { duration: 0.1, rateFunc: linear },
           );
-          await changeField(scene, image, next, vectors, state, nextState, 0.1, [
+          await changeField(s.scene, image, next, vectors, state, nextState, 0.1, [
             table.tx.animate
               .moveTo(point([...step.tx, 0.12]))
               .withDuration(0.1)
@@ -111,4 +105,4 @@ export default {
       },
     );
   },
-} satisfies SceneDefinition;
+);

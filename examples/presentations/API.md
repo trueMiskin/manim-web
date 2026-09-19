@@ -4,7 +4,7 @@
 
 ## Text and formulas with automatic layout
 
-`defineSlide` returns a `SceneDefinition`, so it works with the existing `sceneSlides(id, loader)` helper. Content flows below its title without positioning individual lines:
+Use `defineSlide` for ordinary presentation slides. It returns a `SceneDefinition`, so it works with the existing `sceneSlides(id, loader)` helper. The [lesson](lesson/main.ts), [basic](basic/main.ts), [text](text/main.ts), and [mixed](mixed/main.ts) examples use automatic layout. The [tech demo](tech-demo/deck.ts) combines the same authoring entry point with manually positioned geometry. For flowing content, paragraphs and formulas fit below the title without positioning individual lines:
 
 ```ts
 import { defineSlide } from 'manim-web/reveal';
@@ -26,7 +26,7 @@ export default defineSlide({ title: 'Gradient descent' }, async (s) => {
 });
 ```
 
-Declare every layout block before the first step or animation. Preparation waits for text and formulas, wraps paragraphs to their region's width, and fixes the layout once. Hidden blocks reserve their eventual space, so revealing a bullet does not move earlier content. The title appears immediately; body blocks appear when animated. To introduce a new layout, use another `defineSlide` module.
+Declare every layout block before the first step or animation. Preparation waits for text and formulas, wraps paragraphs to their region's width, and fixes the layout once. Hidden blocks reserve their eventual space, so revealing a bullet does not move earlier content. The title appears immediately by default; body blocks appear when animated. Set `titleVisible: false` to introduce the title with `s.write(s.title)` or an ordinary animation. Use a replacement slot for alternative content in the same area, or another `defineSlide` module for a different overall layout.
 
 `paragraph` accepts prose with `$inline math$`, and `math` accepts a complete formula without dollar delimiters. Bullet items use the same wrapping and inline math as paragraphs. `points.item(index)` returns the whole bullet and its content as one animation target. `s.reveal(points)` reveals the full list together. Use `String.raw` when a JavaScript string contains LaTeX backslashes; `\$` represents a literal dollar sign in prose.
 
@@ -53,7 +53,7 @@ defineSlide(
 );
 ```
 
-Available color roles are `text`, `muted`, `accent`, `secondary`, and `background`. Content also accepts CSS colors. Themes include `fontFamily`, optional `fontUrl`, `titleSize`, `bodySize`, `mathSize`, `lineHeight`, `margin`, `gap`, `itemGap`, `columnGap`, and animation `duration`. Share a theme object across modules for a consistent deck. Paragraph and formula options accept `fontSize` for a local override.
+Available color roles are `text`, `muted`, `accent`, `secondary`, and `background`. Content also accepts CSS colors. Themes include `fontFamily`, optional `fontUrl`, `titleSize`, `titleAlign`, optional `titleFontFamily`/`titleFontUrl`, `bodySize`, `mathSize`, `captionSize`, `captionGap`, `lineHeight`, `margin`, `gap`, `itemGap`, `columnGap`, and animation `duration`. Title fonts otherwise inherit the body font settings. Share a theme object across modules for a consistent deck. Paragraph and formula options accept `fontSize` for a local override.
 
 Text and formulas keep their authored font size. Layout overflow throws an explanatory error: split the content, shorten it, or choose a smaller size or spacing. This makes an accidentally crowded slide visible during preparation.
 
@@ -77,6 +77,60 @@ await s.step({ id: 'graph' }, () => s.reveal(explanation, diagram));
 ```
 
 Import `Axes` and `VGroup` from `manim-web`. Group objects that must keep their relative positions before passing them to `place`. Placement aligns the group within the region and, by default, shrinks it if necessary to fit its width and optional reserved `height`. `fit: 'none'` preserves its size; `align` accepts `'left'`, `'center'`, or `'right'`. Ordinary mathematical geometry and animations retain their usual APIs. `s.scene` exposes the underlying `RecordingScene` for manual scene operations.
+
+### Figures and captions
+
+Use `figure` to keep a caption beneath its graphic, with its own typography and spacing:
+
+```ts
+const { diagram, caption } = s.figure(new VGroup(axes, curve), {
+  height: 3.5,
+  caption: 'The curve reaches its minimum at the origin.',
+  captionOptions: { color: 'muted' },
+});
+
+await s.step({ id: 'curve' }, async () => {
+  await s.play(new Create(diagram));
+  await s.reveal(caption);
+});
+```
+
+`figure` accepts the same placement options as `place`. Its `height` reserves the graphic area; caption height and `captionGap` are additional. Graphics may shrink to fit; captions wrap at their authored font size. The returned `diagram` and `caption` are separate ordinary Manim objects, so they can appear, change, and disappear independently. Caption text remains selectable. Keep scientific labels and annotations inside the diagram when their positions describe its geometry.
+
+### Replace content in one area
+
+A slot reserves the largest of its alternatives once, instead of stacking them:
+
+```ts
+const description = s.slot();
+const reflection = description.paragraph('Reflection');
+const refraction = description.paragraph('Refraction');
+
+await s.step({ id: 'reflection' }, () => s.reveal(reflection));
+await s.step({ id: 'refraction' }, () => s.replace(reflection, refraction));
+```
+
+Declare all alternatives before the first step. They share a top anchor and their chosen horizontal alignment; hidden alternatives reserve space without appearing. Neighboring content stays fixed. `slot()` returns a region with the usual `paragraph`, `math`, `bullets`, `place`, `figure`, and `columns` helpers. A figure or bullet list remains a complete arrangement inside its alternative.
+
+`s.replace(previous, next, options?)` crossfades two objects in their existing positions, using the theme duration by default. Its options accept `duration` and `rateFunc`; use ordinary animations for movement. It does not choose or reposition an alternative automatically. For formula matching or simultaneous changes to a diagram and its description, use ordinary animations in one `s.play(...)` call:
+
+```ts
+await s.play(
+  new TransformMatchingTex(oldFormula, newFormula),
+  new FadeOut(reflection),
+  new FadeIn(refraction),
+);
+```
+
+Import the animations from `manim-web`. `s.play` handles the visibility of declared blocks; use it for their animations rather than bypassing that handling with `s.scene.play`. Manual geometry, updaters, `s.scene.add/remove`, and camera operations can coexist with these layout helpers. The [tech demo](tech-demo/README.md) uses `defineSlide` for shared 2D titles and checkpoints while keeping its scientific geometry and captions manually positioned.
+
+### Combine automatic layout with manual animation
+
+Use automatic layout for content that flows: paragraphs, bullets, columns, and independent illustrations. Geometry that changes through several states can stay in one manually authored coordinate system inside `defineSlide`. Such objects do not need `place`, `figure`, or `slot` to participate in `s.play` and `s.step`.
+
+The [optics example](tech-demo/scenes/demo-optics.ts) creates lenses, rays, and a room in the same coordinates, then animates their transitions with ordinary `ReplacementTransform` and `FadeOut`. Its caption is a positioned text object beneath the drawing. This preserves the visual sequence without moving the drawing into a layout region and compensating for that move afterward.
+
+Keep construction separate from the animation steps when possible: create the objects first, then let each step describe what appears, changes, or disappears. Use a direct `SceneDefinition` where it remains clearer, as in the [3D example](tech-demo/scenes/demo-3d.ts) with its fixed screen labels and camera configuration.
 
 ### Name formula parts
 
@@ -119,7 +173,9 @@ Code spans and code blocks remain literal. Escape currency dollar signs as `\$`.
 
 ## Direct scene authoring
 
-Use a `SceneDefinition` directly when the scene calls for manually arranged objects:
+Use a `SceneDefinition` directly when a custom animation needs complete control over scene construction. The [low-level example](low-level/scene.ts) keeps one small manually positioned scene for reference. The [tech demo](tech-demo/README.md) combines `defineSlide` with manually positioned 2D scientific diagrams, and uses a direct definition for its 3D topic. For a diagram inside an ordinary slide, use `defineSlide` with `place` as shown above.
+
+A minimal direct scene looks like this:
 
 ```ts
 import { Circle, Create } from 'manim-web';

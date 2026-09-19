@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import type { ManimPresentation } from '../../src/reveal/ManimPresentation';
+import type { Axes } from '../../src/mobjects/graphing/Axes';
 import type { Text } from '../../src/mobjects/text/Text';
 
 declare global {
@@ -29,18 +30,23 @@ async function settled(page: Page): Promise<void> {
   });
 }
 
-// MIGRATION: navigating back restores the same text geometry after either a
-// completed or interrupted replacement animation, independently of replay history.
-test('the basic headline keeps its size when returning during a text replacement', async ({
+// MIGRATION: replacement steps show only their authored content and restore
+// earlier geometry after completed or interrupted playback.
+test('basic text replaces previous content and restores it through interrupted replay', async ({
   page,
 }) => {
   await ready(page, `${basic}index.html#/text--styles--reveal`);
   await at(page, 'text--styles--reveal');
   await settled(page);
+  const selection = page.locator(`${currentLeaf} .manim-selection`);
+  await expect(selection).toContainText('Give words a little motion');
+  await expect(selection).toContainText('One letter. One word. One idea.');
+  await expect(selection).not.toContainText('Reveal one idea at a time.');
   const headingBounds = () =>
     page.evaluate(() => {
       const heading = [...window.__MANIM_PRESENTATION__!.player!.scene.mobjects].find(
         (object): object is Text =>
+          object.getThreeObject().visible &&
           typeof (object as Text).getText === 'function' &&
           (object as Text).getText() === 'Give words a little motion',
       )!;
@@ -61,10 +67,22 @@ test('the basic headline keeps its size when returning during a text replacement
   await page.keyboard.press('ArrowDown');
   await at(page, 'text--styles--bullets');
   await settled(page);
+  await expect(selection).toContainText('Build a list, then add emphasis');
+  await expect(selection).toContainText('Highlight the point to remember.');
+  for (const previous of ['Give words a little motion', 'One letter.', 'Write a heading']) {
+    await expect(selection).not.toContainText(previous);
+    await expect(
+      page.locator('.manim-handout [data-manim-id="text/styles/bullets"]'),
+    ).not.toContainText(previous);
+  }
   await page.keyboard.press('ArrowUp');
   await at(page, 'text--styles--reveal');
   await settled(page);
   expect(await headingBounds()).toEqual(expected);
+  await expect(selection).toContainText('One letter. One word. One idea.');
+  await expect(selection).toContainText('Write a heading');
+  await expect(selection).not.toContainText('Build a list, then add emphasis');
+  await expect(selection).not.toContainText('Highlight the point to remember.');
 });
 
 // MIGRATION: real browser representatives for native Reveal navigation and the
@@ -73,11 +91,20 @@ test('native horizontal/vertical keys, deep links, replay and overview share che
   page,
 }) => {
   await ready(page, basic);
+  await settled(page);
+  const titleBounds = () =>
+    page.evaluate(() => {
+      const title = [...window.__MANIM_PRESENTATION__!.player!.scene.mobjects][0];
+      return { left: title.getBounds().min.x, top: title.getBounds().max.y };
+    });
+  const staticTitleBounds = await titleBounds();
   await expect(page.locator('.manim-handout > .manim-page')).toHaveCount(11);
   await expect(page.locator('.reveal .slides > section')).toHaveCount(5);
   await page.keyboard.press('ArrowRight');
   await at(page, 'geometry--circle--draw');
   await settled(page);
+  // Static and animated slide titles share the same content origin.
+  expect(await titleBounds()).toEqual(staticTitleBounds);
   await expect(page.locator(`${currentLeaf} .notes`)).toContainText(
     'Start with one geometric object',
   );
@@ -133,11 +160,28 @@ test('native horizontal/vertical keys, deep links, replay and overview share che
 test('basic static bullets and live coordinates remain readable through replay', async ({
   page,
 }) => {
-  await ready(page, `${basic}#/welcome--bullets`);
-  await at(page, 'welcome--bullets');
-  await expect(page.locator(`${currentLeaf} li`)).toHaveCount(3);
-  await expect(page.locator(`${currentLeaf} .fragment, ${currentLeaf} canvas`)).toHaveCount(0);
-  await expect(page.locator('.manim-handout [data-manim-id="welcome/bullets"] li')).toHaveCount(3);
+  await ready(page, `${basic}#/welcome--bullets--content`);
+  await at(page, 'welcome--bullets--content');
+  await settled(page);
+  for (const text of [
+    'Start with one clear idea.',
+    'Use a short list to make it easy to follow.',
+    'Add motion when a change is worth seeing.',
+  ]) {
+    await expect(page.locator(`${currentLeaf} .manim-selection`)).toContainText(text);
+    await expect(
+      page.locator('.manim-handout [data-manim-id="welcome/bullets/content"]'),
+    ).toContainText(text);
+  }
+  expect(
+    await page.evaluate(() => {
+      const player = window.__MANIM_PRESENTATION__!.player!;
+      player.seekCheckpoint('content', 'start');
+      const start = player.scene.renderer.getCanvas().toDataURL();
+      player.seekCheckpoint('content', 'end');
+      return player.scene.renderer.getCanvas().toDataURL() === start;
+    }),
+  ).toBe(true);
 
   await page.evaluate(() => {
     location.hash = '#/text--styles--bullets';
@@ -145,7 +189,7 @@ test('basic static bullets and live coordinates remain readable through replay',
   await at(page, 'text--styles--bullets');
   await settled(page);
   await expect(page.locator(`${currentLeaf} .manim-selection`)).toContainText(
-    'Build a list, then add emphasis',
+    'Highlight the point to remember.',
   );
 
   await page.evaluate(() => {
@@ -167,11 +211,14 @@ test('basic static bullets and live coordinates remain readable through replay',
       player.seek(checkpoint.startTime + fraction * (checkpoint.endTime - checkpoint.startTime));
       const objects = [...player.scene.mobjects];
       const point = objects.find((object) => object.constructor.name === 'Dot')!;
+      const axes = objects.find((object) => object.constructor.name === 'Axes') as Axes;
       const labels = objects
         .filter((object): object is typeof object & { getText(): string } => 'getText' in object)
         .map((object) => object.getText())
         .filter((text) => /^(x|y|distance|angle) = /.test(text));
-      return { point: point.getCenter(), labels };
+      const x = Number.parseFloat(labels.find((text) => text.startsWith('x = '))!.split(' = ')[1]);
+      const y = Number.parseFloat(labels.find((text) => text.startsWith('y = '))!.split(' = ')[1]);
+      return { point: point.getCenter(), projected: axes.c2p(x, y), labels };
     };
     const start = sample(0);
     const middle = sample(0.5);
@@ -191,8 +238,8 @@ test('basic static bullets and live coordinates remain readable through replay',
       }),
     );
     expect(Object.keys(values)).toHaveLength(4);
-    expect(sample.point[0]).toBeCloseTo(values.x - 1.7, 2);
-    expect(sample.point[1]).toBeCloseTo(values.y - 0.25, 2);
+    expect(sample.point[0]).toBeCloseTo(sample.projected[0], 2);
+    expect(sample.point[1]).toBeCloseTo(sample.projected[1], 2);
     expect(values.distance).toBeCloseTo(Math.hypot(values.x, values.y), 1);
     expect(values.angle).toBeCloseTo((Math.atan2(values.y, values.x) * 180) / Math.PI, 0);
     expect(sample.point.every(Number.isFinite)).toBe(true);
