@@ -15,7 +15,7 @@ The 2D topics use `defineSlide` for shared title styling and checkpoints, with o
 | Heatmaps and gradients | Show a coverage field        | Animate smoothing                                |
 | Optimization           | Show the initial transmitter | Follow the optimization trajectory               |
 
-For plain bullet slides, varied text animations and a moving point with live coordinates, distance and angle, see the [basic presentation](../basic/main.ts).
+For a combined starter with declarative text, formulas, columns, named bullet builds, and custom animations, see the [basic presentation](../basic/deck.ts). It also includes varied text animations and a moving point with live coordinates, distance and angle.
 
 ## TypeScript presentation
 

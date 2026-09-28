@@ -27,6 +27,11 @@ export type SlideThemeOptions = Partial<Omit<SlideTheme, 'colors'>> & {
   colors?: Partial<SlideTheme['colors']>;
 };
 
+export type PresentationThemeOptions = SlideThemeOptions & {
+  /** Initial built-in palette when the presentation has no explicit palette collection. */
+  preset?: 'dark' | 'light';
+};
+
 type ResolvedSlideTheme = SlideTheme &
   Required<Pick<SlideTheme, 'titleAlign' | 'captionSize' | 'captionGap'>>;
 
@@ -58,15 +63,22 @@ export function slideColor(theme: SlideTheme, color = 'text'): string {
 export function resolveSlideTheme(
   options: SlideThemeOptions = {},
   colors: ColorPalette = darkColors,
+  inherited: SlideThemeOptions = {},
 ): ResolvedSlideTheme {
   const theme = {
     ...DEFAULT_SLIDE_THEME,
+    ...inherited,
     ...options,
-    titleAlign: options.titleAlign ?? DEFAULT_SLIDE_THEME.titleAlign,
-    captionSize: options.captionSize ?? DEFAULT_SLIDE_THEME.captionSize,
-    captionGap: options.captionGap ?? DEFAULT_SLIDE_THEME.captionGap,
-    colors: Object.freeze({ ...colors, ...options.colors }) as ColorPalette,
+    titleAlign: options.titleAlign ?? inherited.titleAlign ?? DEFAULT_SLIDE_THEME.titleAlign,
+    captionSize: options.captionSize ?? inherited.captionSize ?? DEFAULT_SLIDE_THEME.captionSize,
+    captionGap: options.captionGap ?? inherited.captionGap ?? DEFAULT_SLIDE_THEME.captionGap,
+    colors: Object.freeze({ ...colors, ...inherited.colors, ...options.colors }) as ColorPalette,
   };
+  validateSlideTheme(theme);
+  return theme;
+}
+
+function validateSlideTheme(theme: ResolvedSlideTheme): void {
   if (!['left', 'center', 'right'].includes(theme.titleAlign))
     throw new Error('Slide titleAlign must be left, center, or right.');
   for (const key of ['titleSize', 'bodySize', 'captionSize', 'mathSize', 'lineHeight'] as const) {
@@ -77,5 +89,4 @@ export function resolveSlideTheme(
     if (!Number.isFinite(theme[key]) || theme[key] < 0)
       throw new Error(`Slide theme ${key} must be a nonnegative finite number.`);
   }
-  return theme;
 }

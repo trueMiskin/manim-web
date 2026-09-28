@@ -182,19 +182,20 @@ function createContentSlide(
   build: (slide: SlideContext) => Promise<void>,
   inherited?: SceneBuildContext,
 ): BoundSceneDefinition {
-  resolveSlideTheme(options.theme);
+  resolveSlideTheme(options.theme, inherited?.colors, inherited?.theme);
   if (!options.title.trim()) throw new Error('A content slide needs a title.');
   return {
     get options() {
       return {
-        backgroundColor: resolveSlideTheme(options.theme, inherited?.colors).colors.background,
+        backgroundColor: resolveSlideTheme(options.theme, inherited?.colors, inherited?.theme)
+          .colors.background,
         ...options.options,
       };
     },
     createScene: options.createScene,
-    withPalette: (context) => createContentSlide(options, build, context),
+    withPalette: (context) => createContentSlide(options, build, { ...inherited, ...context }),
     async build(scene, paletteContext = inherited) {
-      const theme = resolveSlideTheme(options.theme, paletteContext?.colors);
+      const theme = resolveSlideTheme(options.theme, paletteContext?.colors, paletteContext?.theme);
       const title = new RichParagraph({
         text: options.title,
         width: scene.camera.frameWidth - 2 * theme.margin,

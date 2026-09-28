@@ -4,6 +4,8 @@ import { defineConfig } from 'vite';
 import dts from 'vite-plugin-dts';
 
 export default defineConfig({
+  // Reveal ships standalone ESM. Lazy mounting must survive dependency reoptimization.
+  optimizeDeps: { exclude: ['reveal.js', 'reveal.js/plugin/notes'] },
   plugins: [
     UnpluginTypia(),
     dts({

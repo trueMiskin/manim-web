@@ -9,7 +9,30 @@ export {
   audioSlide,
   blankSlide,
 } from './authoring';
+export { slide, type DeclarativeSlideOptions, type SlideBuild } from './declarative';
+export {
+  paragraph,
+  math,
+  bullets,
+  image,
+  columns,
+  type ContentBlock,
+  type ContentBlockOptions,
+  type SlideContent,
+  type ParagraphBlock,
+  type MathBlock,
+  type BulletsBlock,
+  type BulletItem,
+  type ImageBlock,
+  type ImageBlockOptions,
+  type ColumnsBlock,
+} from './declarativeBlocks';
 export { ManimPresentation, manimPresentation } from './ManimPresentation';
+export {
+  mountPresentation,
+  type MountPresentationOptions,
+  type MountedPresentation,
+} from './mountPresentation';
 export { compilePresentation } from './compile';
 export type * from './types';
 export {
@@ -26,7 +49,12 @@ export {
   type SlideFigureOptions,
   type SlideFigure,
 } from './slideBlocks';
-export { DEFAULT_SLIDE_THEME, type SlideTheme, type SlideThemeOptions } from './slideTheme';
+export {
+  DEFAULT_SLIDE_THEME,
+  type SlideTheme,
+  type SlideThemeOptions,
+  type PresentationThemeOptions,
+} from './slideTheme';
 export {
   definePalettes,
   darkColors,
