@@ -19,6 +19,61 @@ declare global {
 const fixture = '/tests/integration/authoring.html';
 const currentLeaf = '.reveal .slides > section.present > section.present';
 
+// MIGRATION: declarative slides preserve their content, column layout, and
+// additive builds across direct links, navigation, palette changes, and printing.
+test('the basic deck mounts, reveals named bullet items, and prepares every handout state', async ({
+  page,
+}, testInfo) => {
+  const errors: string[] = [];
+  page.on('pageerror', (error) => errors.push(error.message));
+  const failed = new Promise<never>((_, reject) => page.once('pageerror', reject));
+  await Promise.race([
+    (async () => {
+      await page.goto('/examples/presentations/basic/#/lesson--closer--minimum');
+      await page.waitForFunction(
+        () => window.__MANIM_PRESENTATION__?.ready || window.__MANIM_PRESENTATION__?.error,
+      );
+    })(),
+    failed,
+  ]);
+  expect(await page.evaluate(() => window.__MANIM_PRESENTATION__?.error)).toBeUndefined();
+  await expect(page.locator(currentLeaf)).toHaveAttribute('id', 'lesson--closer--minimum');
+  await expect(page.locator(`${currentLeaf} .manim-selection`)).toContainText('output falls');
+  await expect(page.locator(`${currentLeaf} .manim-selection`)).toContainText('output reaches');
+  await expect(page.locator('.manim-handout .manim-page')).toHaveCount(16);
+
+  await page.keyboard.press('ArrowUp');
+  await expect(page.locator(currentLeaf)).toHaveAttribute('id', 'lesson--closer--first-step');
+  await expect(page.locator(`${currentLeaf} .manim-selection`)).toContainText('output falls');
+  await expect(page.locator(`${currentLeaf} .manim-selection`)).not.toContainText('output reaches');
+  await page.keyboard.press('ArrowUp');
+  await expect(page.locator(currentLeaf)).toHaveAttribute('id', 'lesson--closer--content');
+  await expect(page.locator(`${currentLeaf} .manim-selection`)).not.toContainText('output falls');
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator(`${currentLeaf} .manim-selection`)).toContainText('output falls');
+
+  await page.keyboard.press('Shift+Space');
+  await expect(page.locator(currentLeaf)).toHaveAttribute('id', 'lesson--closer--content');
+  await page.keyboard.press('Shift+Space');
+  await expect(page.locator(currentLeaf)).toHaveAttribute('id', 'lesson--graph--content');
+  await expect(page.locator(`${currentLeaf} .manim-selection`)).toContainText('curve is symmetric');
+  await expect(page.locator(`${currentLeaf} .manim-selection`)).toContainText('both give a height');
+  const canvas = page.locator(`${currentLeaf} canvas`).first();
+  await expect(canvas).toBeVisible();
+  expect((await canvas.boundingBox())!.height).toBeGreaterThan(300);
+  await page.screenshot({ path: testInfo.outputPath('basic-columns.png') });
+
+  await page.getByRole('combobox', { name: 'Color palette' }).selectOption('light');
+  await page.waitForFunction(() => window.__MANIM_PRESENTATION__?.ready);
+  await expect(page.locator(currentLeaf)).toHaveAttribute('id', 'lesson--graph--content');
+  await expect(page.locator(`${currentLeaf} .manim-selection`)).toContainText('curve is symmetric');
+  await expect(page.locator('.manim-handout .manim-page')).toHaveCount(16);
+  await page.keyboard.press('Shift+Space');
+  await expect(page.locator(currentLeaf)).toHaveAttribute('id', 'lesson--quadratic--content');
+  await expect(page.locator(`${currentLeaf} .manim-selection`)).toContainText('minimum is at zero');
+  expect(errors).toEqual([]);
+});
+
 // MIGRATION: forward navigation never displays a checkpoint's completed poster
 // while its live scene is still loading, regardless of the load's duration.
 test('the quadratic lesson does not flash its completed preview before playback', async ({

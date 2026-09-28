@@ -1,14 +1,16 @@
 import type {
   PresentationDefinition,
+  PresentationOptions,
   PresentationSlide,
   PresentationTopic,
   SceneSlides,
   SlideAppearance,
   StaticSlide,
 } from './types';
-import { definePalettes, resolvePresentationPalette } from './palettes';
+import { darkColors, definePalettes, lightColors, resolvePresentationPalette } from './palettes';
+import { resolveSlideTheme } from './slideTheme';
 
-function assertId(id: string): void {
+export function assertId(id: string): void {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9_-]*$/.test(id)) {
     throw new Error(
       `Invalid presentation ID "${id}"; use letters, digits, underscores and hyphens.`,
@@ -16,8 +18,21 @@ function assertId(id: string): void {
   }
 }
 
-/** Validate IDs once; authored scene steps supply the checkpoint metadata. */
-export function presentation(definition: PresentationDefinition): PresentationDefinition {
+/**
+ * Normalize flat slides into horizontal topics and validate addressable IDs.
+ * @post result.topics.every(item => item.slides.length > 0)
+ */
+export function presentation(options: PresentationOptions): PresentationDefinition {
+  if ((options.topics !== undefined) === (options.slides !== undefined))
+    throw new Error('A presentation needs either slides or topics, but not both.');
+  const { slides: flatSlides, ...metadata } = options;
+  const definition: PresentationDefinition = {
+    ...metadata,
+    topics:
+      options.topics ??
+      flatSlides!.map((slide) => topic(slide.id, [slide], { title: slide.title })),
+  };
+  normalizeTheme(definition);
   const palette = resolvePresentationPalette(definition);
   const topics = new Set<string>();
   for (const item of definition.topics) {
@@ -35,6 +50,30 @@ export function presentation(definition: PresentationDefinition): PresentationDe
   return palette
     ? { ...definition, palettes: definePalettes(definition.palettes!), palette: palette.name }
     : definition;
+}
+
+function normalizeTheme(definition: PresentationDefinition): void {
+  const theme = definition.theme;
+  if (!theme) return;
+  if (theme.preset !== undefined && theme.preset !== 'dark' && theme.preset !== 'light')
+    throw new Error('Presentation theme preset must be dark or light.');
+  resolveSlideTheme(theme);
+  definition.theme = Object.freeze({
+    ...theme,
+    ...(theme.colors && { colors: Object.freeze({ ...theme.colors }) }),
+  });
+  if (!definition.palettes && (theme.preset || theme.colors)) {
+    definition.palettes = { dark: darkColors, light: lightColors };
+    definition.palette ??= theme.preset ?? 'dark';
+  }
+  if (definition.palettes && theme.colors) {
+    definition.palettes = Object.fromEntries(
+      Object.entries(definition.palettes).map(([name, colors]) => [
+        name,
+        resolveSlideTheme({ colors: theme.colors }, colors).colors,
+      ]),
+    );
+  }
 }
 
 export function topic(

@@ -2,9 +2,114 @@
 
 `manim-web/reveal` is an optional entry point. The core library does not import Reveal. The starter and examples use Reveal 6's public stylesheet and notes-plugin exports.
 
+## Content slides
+
+Start with `slide` for prose, formulas, lists, images, and columns. Content appears immediately by default, with shared typography and automatic layout. Run `slides init my-presentation` to copy the [basic starter](basic/deck.ts), which combines declarative content and custom animation in grouped topics. A small deck can also use a flat `slides` array:
+
+```ts
+import { bullets, math, paragraph, presentation, slide } from 'manim-web/reveal';
+
+export const deck = presentation({
+  title: 'A small math lesson',
+  theme: { preset: 'dark', titleAlign: 'left', bodySize: 28 },
+  slides: [
+    slide('quadratic', {
+      title: 'Meet a quadratic function',
+      content: [
+        paragraph('Squaring a number gives a simple function to explore.'),
+        math('f(x)=x^2'),
+        bullets(['Opposite inputs give the same result.', 'The minimum is at zero.']),
+      ],
+      notes: 'Ask what happens when the input changes sign.',
+    }),
+  ],
+});
+```
+
+Mount the deck in an HTML element such as `<div id="presentation"></div>`:
+
+```ts
+import { mountPresentation } from 'manim-web/reveal';
+import { deck } from './deck';
+
+const mounted = await mountPresentation('#presentation', deck, {
+  assets: import.meta.env.PROD ? './manim-handout.json' : undefined,
+});
+// When removing an embedded presentation:
+// mounted.destroy();
+```
+
+`mountPresentation` creates the Reveal structure, loads its styles and notes plugin, and initializes navigation. Supplying `assets` loads the handout manifest produced by `slides build`; omitting it prepares the presentation in the browser. Keep the existing `manimPresentation` plugin API when your application initializes Reveal itself.
+
+`paragraph` and `bullets` support `$inline math$`; `math` accepts LaTeX without dollar delimiters. Use `String.raw` for strings containing LaTeX backslashes. Block options accept local font sizes and palette color roles such as `'accent'`. The presentation's `theme` supplies defaults to content slides and custom `defineSlide` scenes. Set `preset` to `'dark'` or `'light'` for the initial palette; without custom palettes, both presets are available in the color selector.
+
+### Columns and images
+
+Each inner array supplies the content of one column. Widths are relative proportions, and images can have captions:
+
+```ts
+import { columns, image, math, paragraph, slide } from 'manim-web/reveal';
+import parabola from './parabola.svg?url';
+
+const graph = slide('graph', {
+  title: 'One idea, two representations',
+  content: columns(
+    [
+      [paragraph('Opposite inputs give the same result.'), math('f(-2)=f(2)=4')],
+      [
+        image(parabola, {
+          height: 3,
+          caption: 'The parabola is symmetric about the vertical axis.',
+        }),
+      ],
+    ],
+    { widths: [3, 2] },
+  ),
+});
+```
+
+Import image URLs so Vite includes them in portable builds. `height` reserves space in scene units; the image fits inside its column and the caption flows below it. Text retains its authored font size, and overflow reports an error rather than silently shrinking the content.
+
+### Reveal content at a named pause
+
+Give a block an `id` and refer to it from a build's `show` array:
+
+```ts
+slide('closer', {
+  title: 'Move closer to the minimum',
+  content: [math('f(2)=4'), math('f(1)=1<4', { id: 'details', color: 'accent' })],
+  notes: 'Ask what the output will be when the input is one.',
+  builds: [{ id: 'answer', show: ['details'], notes: 'The new output is closer to zero.' }],
+});
+```
+
+Blocks referenced by builds start hidden but reserve their space. All other content is visible in the initial `content` checkpoint. Each build adds its blocks immediately and keeps earlier content visible; it creates a navigation pause with its own notes and printable state. Block IDs belong to `paragraph`, `math`, `bullets`, or `image`. Build IDs must be distinct from the reserved initial ID `content`.
+
+To reveal a list one item at a time, use `{ id, text }` items and refer to their IDs in separate builds:
+
+```ts
+slide('observations', {
+  title: 'Two observations',
+  content: bullets([
+    { id: 'symmetry', text: 'Opposite inputs give the same result.' },
+    { id: 'minimum', text: 'The minimum is at zero.' },
+  ]),
+  builds: [
+    { id: 'first', show: ['symmetry'] },
+    { id: 'second', show: ['minimum'] },
+  ],
+});
+```
+
+Use a list-level `id` to reveal the whole list, or item IDs for individual reveals; do not combine the two in one list. In a list with item IDs, string items appear immediately. The lesson topic in the [basic deck](basic/deck.ts) combines an initial formula with two named bullet builds.
+
+For custom entrances, movement, or formula matching, add `sceneSlides('circle', () => import('./scene'))` to the same `slides` array or topic and author that module with `defineSlide`. See [basic/scene.ts](basic/scene.ts).
+
+Choose either `slides` or `topics` when defining a presentation. Each flat slide occupies one horizontal position; builds and animation checkpoints are vertical pauses within it. Use explicit `topics` to group several scenes into the same horizontal stack. Existing topic decks retain their routes.
+
 ## Text and formulas with automatic layout
 
-Use `defineSlide` for ordinary presentation slides. It returns a `SceneDefinition`, so it works with the existing `sceneSlides(id, loader)` helper. The [lesson](lesson/main.ts), [basic](basic/main.ts), [text](text/main.ts), and [mixed](mixed/main.ts) examples use automatic layout. The [tech demo](tech-demo/deck.ts) combines the same authoring entry point with manually positioned geometry. For flowing content, paragraphs and formulas fit below the title without positioning individual lines:
+Use `defineSlide` when a slide needs custom animation. It returns a `SceneDefinition`, so it works with the existing `sceneSlides(id, loader)` helper. The [lesson](lesson/main.ts), [basic](basic/main.ts), [text](text/main.ts), and [mixed](mixed/main.ts) examples use automatic layout. The [tech demo](tech-demo/deck.ts) combines the same authoring entry point with manually positioned geometry. For flowing content, paragraphs and formulas fit below the title without positioning individual lines:
 
 ```ts
 import { defineSlide } from 'manim-web/reveal';
@@ -53,7 +158,7 @@ defineSlide(
 );
 ```
 
-Available color roles are `text`, `muted`, `accent`, `secondary`, and `background`. Content also accepts CSS colors. Themes include `fontFamily`, optional `fontUrl`, `titleSize`, `titleAlign`, optional `titleFontFamily`/`titleFontUrl`, `bodySize`, `mathSize`, `captionSize`, `captionGap`, `lineHeight`, `margin`, `gap`, `itemGap`, `columnGap`, and animation `duration`. Title fonts otherwise inherit the body font settings. Share a theme object across modules for a consistent deck. Paragraph and formula options accept `fontSize` for a local override.
+Available color roles are `text`, `muted`, `accent`, `secondary`, and `background`. Content also accepts CSS colors. Themes include `fontFamily`, optional `fontUrl`, `titleSize`, `titleAlign`, optional `titleFontFamily`/`titleFontUrl`, `bodySize`, `mathSize`, `captionSize`, `captionGap`, `lineHeight`, `margin`, `gap`, `itemGap`, `columnGap`, and animation `duration`. Title fonts otherwise inherit the body font settings. Set `theme` on the presentation to share defaults across modules; a slide's own theme overrides them. Paragraph and formula options accept `fontSize` for a local override.
 
 Text and formulas keep their authored font size. Layout overflow throws an explanatory error: split the content, shorten it, or choose a smaller size or spacing. This makes an accidentally crowded slide visible during preparation.
 

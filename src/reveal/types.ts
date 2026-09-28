@@ -3,6 +3,7 @@ import type { RecordingScene } from '../player/RecordingScene';
 import type { Scene, SceneOptions } from '../core/Scene';
 import type { Slide } from '../animation/MasterTimeline';
 import type { ColorPalette, PaletteCollection, ResolvedPalette } from './palettes';
+import type { PresentationThemeOptions, SlideThemeOptions } from './slideTheme';
 
 export interface SlideAppearance {
   title?: string;
@@ -31,6 +32,7 @@ export interface StaticSlide extends SlideAppearance {
 export interface SceneBuildContext {
   readonly colors: ColorPalette;
   readonly palette?: string;
+  readonly theme?: Readonly<SlideThemeOptions>;
 }
 
 export interface SceneDefinition {
@@ -70,9 +72,19 @@ export interface PresentationDefinition {
   palettes?: PaletteCollection;
   /** Initial palette name. Defaults to the first palette when omitted. */
   palette?: string;
+  /** Typography and spacing inherited by content slides; local slide options take precedence. */
+  theme?: PresentationThemeOptions;
   /** Default: all meaningful pauses. IDs use topic/scene/checkpoint. */
   handout?: 'all' | 'final' | readonly string[];
 }
+
+/** Author either a flat sequence or explicit horizontal topics, never both. */
+export type PresentationOptions =
+  | (PresentationDefinition & { slides?: never })
+  | (Omit<PresentationDefinition, 'topics'> & {
+      slides: readonly PresentationSlide[];
+      topics?: never;
+    });
 
 export type CheckpointSnapshot = Awaited<ReturnType<Player['captureCheckpoint']>>;
 

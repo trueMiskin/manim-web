@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="420" height="320" viewBox="0 0 420 320" role="img" aria-labelledby="title description">
+  <title id="title">The graph of y equals x squared</title>
+  <desc id="description">A parabola with its minimum at the origin. The points at x equals minus two and x equals two both have height four.</desc>
+  <rect width="420" height="320" rx="16" fill="#f5f7fb" />
+  <g stroke="#c9d3df" stroke-width="1">
+    <path d="M66 66H354M66 114H354M66 162H354M66 210H354" />
+    <path d="M114 30V258M162 30V258M258 30V258M306 30V258" />
+  </g>
+  <g fill="none" stroke="#42546c" stroke-width="2">
+    <path d="M52 258H370M210 276V24" />
+    <path d="M362 252L370 258L362 264M204 32L210 24L216 32" />
+  </g>
+  <path d="M105.6 31Q210 485 314.4 31" fill="none" stroke="#006ba8" stroke-width="4" />
+  <g fill="#bb5d00" stroke="#f5f7fb" stroke-width="2">
+    <circle cx="114" cy="66" r="6" />
+    <circle cx="306" cy="66" r="6" />
+  </g>
+  <g font-family="sans-serif" font-size="19" fill="#24364a">
+    <text x="188" y="284">0</text>
+    <text x="102" y="284">−2</text>
+    <text x="300" y="284">2</text>
+    <text x="188" y="73">4</text>
+    <text x="374" y="264">x</text>
+    <text x="220" y="28">y</text>
+    <text x="235" y="304">y = x²</text>
+  </g>
+</svg>

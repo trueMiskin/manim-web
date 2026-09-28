@@ -64,7 +64,17 @@ async function init(directory = 'my-presentation') {
   );
   await writeFile(
     join(target, 'README.md'),
-    '# Your presentation\n\nRun `npm install`, then `npm run dev`.\n\nBefore the first build, install Chromium with `npx playwright install chromium`.\n`npm run build` writes a portable `dist/` including all handout states.\n`npm run pdf` builds and exports `presentation.pdf`.\n\nEdit `palettes.ts` to customize the light and dark colors. Choose the initial `palette` in `main.ts`, or use the Colors selector during a presentation. Add the same named colors to both palettes and use `s.colors.name` in custom graphics; ordinary slide text follows the palette automatically. Switching rebuilds the deck and returns to the current checkpoint paused.\n\nEdit `main.ts` for topics and static content. All slide modules use `defineSlide` for one consistent layout. Start with `intro.ts` and `bullets.ts` for static content using `s.show(...)`; `scene.ts`, `text.ts`, `coordinates.ts` and `matrix.ts` add animation.\n\nDeclare `s.paragraph(...)`, `s.math(...)` and `s.bullets(...)` before the first `s.step(...)`; use `s.columns(...)` and `region.place(...)` for diagrams. Reveal content with `s.reveal(...)` or `s.write(...)`, and use `s.play(...)` for ordinary Manim animations. Each step creates a navigation pause and a printable state.\n',
+    [
+      '# Your presentation',
+      'Run `npm install`, then `npm run dev`.',
+      'Edit `deck.ts` to organize your presentation into topics and add content. The starter combines declarative prose, formulas, lists, columns with an image, named builds, and custom animated scenes. `intro.ts` and `bullets.ts` are short content-slide examples; the lesson topic in `deck.ts` adds formulas, columns, and individual bullet reveals.',
+      'Use `slide` with `paragraph`, `math`, `bullets`, `columns`, and `image` to declare content. Blocks appear immediately and use automatic layout. Paragraphs and bullets accept `$inline math$`; display formulas use `math` without dollar delimiters. Import images as URLs, as shown by `parabola.svg?url`, so they travel with the build.',
+      "Add named `builds` to reveal content on advance. Give a block or individual bullet item an `id`, then reference it in a build's `show` array. Referenced content starts hidden but reserves its space; all other content is initially visible. Each build adds content and creates a navigation pause with notes and a printable state.",
+      'Set `theme` in `deck.ts` for shared typography and spacing. Choose the initial `palette` in `deck.ts`, or use the Colors selector during the presentation. Edit `palettes.ts` to customize the light and dark colors, including named colors for diagrams. Custom scenes inherit the theme and read colors through `s.colors`.',
+      '`main.ts` calls `mountPresentation` to create the Reveal deck, load its styles and notes plugin, and initialize playback. It also loads the generated handout assets in production.',
+      'Start with `scene.ts` for custom animation, then explore `text.ts`, `coordinates.ts`, and `matrix.ts`. These modules use `defineSlide` and are included through `sceneSlides` in the same deck. Declare layout blocks before the first `s.step`, then use `s.reveal`, `s.write`, or ordinary animations through `s.play`. Each step creates a navigation pause and a printable state.',
+      'Before the first build, install Chromium with `npx playwright install chromium`.\n`npm run build` writes a portable `dist/` including all handout states.\n`npm run pdf` builds and exports `presentation.pdf`.',
+    ].join('\n\n') + '\n',
   );
   process.stdout.write(`Created ${target}\nRun npm install in that directory, then npm run dev.\n`);
 }

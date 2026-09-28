@@ -24,7 +24,17 @@ export async function loadScene(
   definition?: PresentationDefinition,
 ): Promise<BoundSceneDefinition> {
   const palette = definition && resolvePresentationPalette(definition);
-  const context = Object.freeze({ colors: palette?.colors ?? darkColors, palette: palette?.name });
+  const theme = definition?.theme;
+  const context = Object.freeze({
+    colors: palette?.colors ?? darkColors,
+    palette: palette?.name,
+    ...(theme && {
+      theme: Object.freeze({
+        ...theme,
+        ...(theme.colors && { colors: Object.freeze({ ...theme.colors }) }),
+      }),
+    }),
+  });
   const loaded = await slides.load();
   const scene = 'default' in loaded ? loaded.default : loaded;
   if (scene.withPalette) return scene.withPalette(context);

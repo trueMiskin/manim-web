@@ -120,8 +120,8 @@ test('native horizontal/vertical keys, deep links, replay and overview share che
     });
   const staticTitleBounds = await titleBounds();
   expect(staticTitleBounds.center).toBeCloseTo(0);
-  await expect(page.locator('.manim-handout > .manim-page')).toHaveCount(11);
-  await expect(page.locator('.reveal .slides > section')).toHaveCount(5);
+  await expect(page.locator('.manim-handout > .manim-page')).toHaveCount(16);
+  await expect(page.locator('.reveal .slides > section')).toHaveCount(6);
   await page.keyboard.press('ArrowRight');
   await at(page, 'geometry--circle--draw');
   await settled(page);
