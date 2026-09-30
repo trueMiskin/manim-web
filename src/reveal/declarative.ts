@@ -43,6 +43,8 @@ function prepareLeaf(
       return [region.paragraph(block.text, block.options)];
     case 'math':
       return [region.math(block.latex, block.options)];
+    case 'code':
+      return [region.code(block.source, block.options)];
     case 'image': {
       const { caption, captionOptions, ...placement } = block.options;
       const graphic = new ImageMobject({ source: block.source, height: placement.height ?? 3 });

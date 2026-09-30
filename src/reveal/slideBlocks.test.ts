@@ -72,6 +72,35 @@ it('fits an over-wide horizontal line without a reserved height', async () => {
   title.dispose();
 });
 
+// MIGRATION: code fits its column after font preparation, keeps source and
+// monospace typography independent of prose, and follows the resolved palette.
+it('lays out themed code beside prose with selectable source and optional controls', async () => {
+  const title = new RichParagraph({ text: 'Code and explanation', width: 12, fontSize: 40 });
+  const theme = { ...DEFAULT_SLIDE_THEME, fontFamily: 'serif', bodySize: 30 };
+  const layout = new SlideLayout(14, 8, theme, title);
+  const [left, right] = new SlideRegion(layout, layout.root).columns();
+  const source = 'return value * 2; // A long line should shrink without wrapping the source.';
+  const sample = left.code(source, { language: 'cpp', lineNumbers: false, copyButton: false });
+  const explanation = right.paragraph('The input is doubled.');
+  await layout.prepare();
+  const bounds = sample.getBounds();
+  const leftEdge = -7 + theme.margin;
+  const columnWidth = (14 - 2 * theme.margin - theme.columnGap) / 2;
+  expect(bounds.min.x).toBeCloseTo(leftEdge);
+  expect(bounds.max.x).toBeCloseTo(leftEdge + columnWidth);
+  expect(bounds.max.x).toBeLessThan(explanation.getBounds().min.x);
+  expect(sample.getSemanticTextRuns()[0]).toMatchObject({
+    source,
+    text: source,
+    color: theme.colors.text,
+    font: { family: 'monospace', size: theme.bodySize },
+    code: { copyButton: false, lineCount: 1 },
+  });
+  expect(sample.getCode()).toBe(source);
+  expect(() => left.code('too late')).toThrow('before the first step');
+  for (const object of [title, sample, explanation]) object.dispose();
+});
+
 // MIGRATION: bullet markers share their first line's baseline independently of
 // formula height, wrapping and repeated font preparation.
 it('aligns the bullet baseline with a tall first-line formula', async () => {

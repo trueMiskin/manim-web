@@ -1,15 +1,19 @@
 import * as THREE from 'three';
 import { VMobject } from '../../core/VMobject';
-import { Vector3Tuple } from '../../core/Mobject';
+import { Mobject, Vector3Tuple } from '../../core/Mobject';
+import { loadFontFace } from './TextFont';
+import { codeSemanticRuns } from './CodeSemantics';
+import type { SemanticTextRun } from './TextSemantics';
 import {
   type Token,
   type TokenType,
   type CodeColorScheme,
   DEFAULT_COLOR_SCHEME,
-  tokenizeLine,
 } from './CodeHighlighting';
+import { tokenizeCode } from './CodeHighlighter';
 import { type CodeToken, computeCodeTokens } from './CodeTokenLayout';
 import { applyTextTextureFilters, getTextResolutionScale } from './textTexture';
+import { logger } from '../../utils/logger';
 
 // Re-export all highlighting types and constants so existing imports from './Code' still work
 export {
@@ -30,12 +34,16 @@ export interface CodeOptions {
   language?: string;
   /** Whether to show line numbers. Default: true */
   lineNumbers?: boolean;
+  /** Show a copy button in presentation text overlays. Default: false */
+  copyButton?: boolean;
   /** Tab width in spaces. Default: 4 */
   tabWidth?: number;
   /** Font size in pixels. Default: 24 */
   fontSize?: number;
   /** Font family. Default: 'monospace' */
   fontFamily?: string;
+  /** Font asset loaded by waitForRender() before measuring the code. */
+  fontUrl?: string;
   /** Color scheme for syntax highlighting */
   colorScheme?: CodeColorScheme;
   /** Whether to show background rectangle. Default: true */
@@ -56,6 +64,7 @@ const PIXEL_TO_WORLD = 1 / 100;
  *
  * Renders code with syntax highlighting using Canvas 2D to a texture.
  * Supports multiple programming languages with customizable color schemes.
+ * Plain text is available immediately; await waitForRender() for highlighted tokens.
  *
  * @example
  * ```typescript
@@ -85,14 +94,21 @@ export class Code extends VMobject {
   protected _code: string;
   protected _language: string;
   protected _lineNumbers: boolean;
+  protected _copyButton: boolean;
   protected _tabWidth: number;
   protected _fontSize: number;
   protected _fontFamily: string;
+  protected _fontUrl?: string;
   protected _colorScheme: CodeColorScheme;
   protected _showBackground: boolean;
   protected _backgroundPadding: number;
   protected _backgroundRadius: number;
   protected _lineHeight: number;
+  private _disposed = false;
+  private _highlightRevision = 0;
+  private _highlightReady: Promise<void> = Promise.resolve();
+  private _cancelHighlightWait?: () => void;
+  private _highlightFailure: { error: unknown } | null = null;
 
   /** Off-screen canvas for code rendering */
   protected _canvas: HTMLCanvasElement | null = null;
@@ -127,9 +143,11 @@ export class Code extends VMobject {
       code,
       language = 'text',
       lineNumbers = true,
+      copyButton = false,
       tabWidth = 4,
       fontSize = 24,
       fontFamily = 'monospace',
+      fontUrl,
       colorScheme = DEFAULT_COLOR_SCHEME,
       showBackground = true,
       backgroundPadding = 16,
@@ -140,9 +158,11 @@ export class Code extends VMobject {
     this._code = code;
     this._language = language.toLowerCase();
     this._lineNumbers = lineNumbers;
+    this._copyButton = copyButton;
     this._tabWidth = tabWidth;
     this._fontSize = fontSize;
     this._fontFamily = fontFamily;
+    this._fontUrl = fontUrl;
     this._colorScheme = colorScheme;
     this._showBackground = showBackground;
     this._backgroundPadding = backgroundPadding;
@@ -159,6 +179,89 @@ export class Code extends VMobject {
 
     // Parse and tokenize code
     this._parseCode();
+    this._renderToCanvas();
+  }
+
+  /**
+   * Wait for the latest syntax highlighting and selected font before layout or capture.
+   * @post this._disposed || this._highlightFailure === null
+   * @post this._tokenizedLines.map(line => line.map(token => token.text).join('')).join('\n') === this._lines.join('\n')
+   */
+  async waitForRender(): Promise<void> {
+    if (this._disposed) return;
+    if (this._fontUrl) {
+      const family = await loadFontFace(this._fontUrl);
+      if (this._disposed) return;
+      if (family) this._fontFamily = `'${family}'`;
+    }
+    if (typeof document !== 'undefined' && typeof document.fonts?.load === 'function') {
+      await document.fonts.load(this._buildFontString(), this._code);
+    }
+    let pending: Promise<void>;
+    do {
+      pending = this._highlightReady;
+      await pending;
+    } while (pending !== this._highlightReady && !this._disposed);
+    if (this._disposed) return;
+    if (this._highlightFailure) throw this._highlightFailure.error;
+    this._renderToCanvas();
+    this._updateMesh();
+    this._markDirty();
+  }
+
+  /**
+   * Exact source with text-only bounds for selection, copying and handouts.
+   * @post result.length === 1
+   * @post result[0].source === this.getCode() && result[0].text === this.getCode()
+   */
+  getSemanticTextRuns(): SemanticTextRun[] {
+    this.getThreeObject();
+    const RESOLUTION_SCALE = getTextResolutionScale();
+    if (this._ctx) this._ctx.font = this._buildFontString();
+    return codeSemanticRuns(this, this._code, {
+      canvas: this._canvas,
+      worldWidth: this._worldWidth,
+      worldHeight: this._worldHeight,
+      x: this._getLineNumberWidth() + (this._backgroundPadding * RESOLUTION_SCALE) / 2,
+      y: this._backgroundPadding * RESOLUTION_SCALE,
+      width: Math.max(this._code.length > 0 ? 1 : 0, this._measureLineWidth()),
+      height: this._fontSize * RESOLUTION_SCALE * this._lineHeight * this._lines.length,
+      font: {
+        family: this._fontFamily,
+        url: this._fontUrl,
+        size: this._fontSize,
+        weight: 'normal',
+        style: 'normal',
+        lineHeight: this._lineHeight,
+        letterSpacing: 0,
+      },
+      color: this._colorScheme.default,
+      language: this._language,
+      copyButton: this._copyButton,
+      tabWidth: this._tabWidth,
+      lineCount: this._lines.length,
+    });
+  }
+
+  /** @post result === (this._canvas === null && this.children.every(child => child.isEmpty())) */
+  override isEmpty(): boolean {
+    return this._canvas === null && this.children.every((child) => child.isEmpty());
+  }
+
+  /**
+   * Bound the textured plane, including ancestor transforms.
+   * @pre !this.isEmpty()
+   * @post result.min <= result.max component-wise
+   */
+  override getBounds(): ReturnType<Mobject['getBounds']> {
+    return Mobject.prototype.getBounds.call(this);
+  }
+
+  /** Preserve the textured plane when a containing group normalizes its transforms.
+   * @post result === this
+   */
+  override normalizeTransform(worldMatrix: THREE.Matrix4 = this._ownMatrix()): this {
+    return this._flattenAsMesh(worldMatrix);
   }
 
   /**
@@ -177,15 +280,37 @@ export class Code extends VMobject {
   }
 
   /**
-   * Parse code into lines and tokenize
+   * Keep immediate display text while the full-source grammar loads asynchronously.
+   * @post this._lines.join('\n') === this._code.replace(/\t/g, ' '.repeat(this._tabWidth))
+   * @post this._tokenizedLines.map(line => line.map(token => token.text).join('')).join('\n') === this._lines.join('\n')
    */
   protected _parseCode(): void {
     // Expand tabs to spaces
     const expandedCode = this._code.replace(/\t/g, ' '.repeat(this._tabWidth));
     this._lines = expandedCode.split('\n');
 
-    // Tokenize each line using the standalone tokenizer
-    this._tokenizedLines = this._lines.map((line) => tokenizeLine(line, this._language));
+    this._tokenizedLines = this._lines.map((text) => [{ text, type: 'default' }]);
+    if (this._disposed) return;
+    const revision = ++this._highlightRevision;
+    this._highlightFailure = null;
+    this._cancelHighlightWait?.();
+    const cancelled = new Promise<void>((resolve) => {
+      this._cancelHighlightWait = resolve;
+    });
+    const highlighted = tokenizeCode(expandedCode, this._language)
+      .then((lines) => {
+        if (this._disposed || revision !== this._highlightRevision) return;
+        this._tokenizedLines = lines;
+        this._renderToCanvas();
+        this._updateMesh();
+        this._markDirty();
+      })
+      .catch((error: unknown) => {
+        if (this._disposed || revision !== this._highlightRevision) return;
+        this._highlightFailure = { error };
+        logger.warn('Code syntax highlighting failed; displaying plain text.', error);
+      });
+    this._highlightReady = Promise.race([highlighted, cancelled]);
   }
 
   /**
@@ -199,6 +324,7 @@ export class Code extends VMobject {
    * Set new code and re-render
    * @param code - New code to display
    * @returns this for chaining
+   * @post result === this && this.getCode() === code
    */
   setCode(code: string): this {
     this._code = code;
@@ -220,6 +346,7 @@ export class Code extends VMobject {
    * Set language and re-render
    * @param language - Programming language
    * @returns this for chaining
+   * @post result === this && this.getLanguage() === language.toLowerCase()
    */
   setLanguage(language: string): this {
     this._language = language.toLowerCase();
@@ -253,7 +380,8 @@ export class Code extends VMobject {
 
   /**
    * Get a specific line of code as a Text-like mobject representation
-   * Returns position info for the specified line
+   * Returns position info for the specified line. Tokens are plain until waitForRender()
+   * resolves; constructor and setters remain synchronous.
    * @param lineNumber - 1-based line number
    * @returns Object with line info or null if out of range
    */
@@ -463,18 +591,23 @@ export class Code extends VMobject {
     const scaledPadding = this._backgroundPadding * RESOLUTION_SCALE;
     const lineNumberWidth = this._getLineNumberWidth();
 
-    // Measure max line width
-    let maxWidth = 0;
-    for (const line of this._lines) {
-      const metrics = this._ctx.measureText(line);
-      maxWidth = Math.max(maxWidth, metrics.width);
-    }
+    const maxWidth = this._measureLineWidth();
 
     // Total dimensions
     const width = Math.ceil(lineNumberWidth + maxWidth + scaledPadding * 2);
     const height = Math.ceil(this._lines.length * scaledLineHeight + scaledPadding * 2);
 
     return { width, height };
+  }
+
+  /** Measure the same token advances used when drawing each line. */
+  private _measureLineWidth(): number {
+    return Math.max(
+      0,
+      ...this._tokenizedLines.map((tokens) =>
+        tokens.reduce((width, token) => width + (this._ctx?.measureText(token.text).width ?? 0), 0),
+      ),
+    );
   }
 
   /**
@@ -635,26 +768,36 @@ export class Code extends VMobject {
   }
 
   /**
-   * Get the center of this code mobject
+   * Get the world-space center of the code plane.
+   * @post result === this._localToWorld([0, 0, 0])
    */
   override getCenter(): Vector3Tuple {
-    return [this.position.x, this.position.y, this.position.z];
+    return this._localToWorld([0, 0, 0]);
   }
 
+  /**
+   * Preserve currently rendered tokens synchronously for animation snapshots.
+   * @post result !== this && result.getCode() === this.getCode()
+   * @post result.getLanguage() === this.getLanguage() && result.getLineCount() === this.getLineCount()
+   */
   override copy(): Code {
     const copy = new Code({
       code: this._code,
       language: this._language,
       lineNumbers: this._lineNumbers,
+      copyButton: this._copyButton,
       tabWidth: this._tabWidth,
       fontSize: this._fontSize,
       fontFamily: this._fontFamily,
+      fontUrl: this._fontUrl,
       colorScheme: { ...this._colorScheme },
       showBackground: this._showBackground,
       backgroundPadding: this._backgroundPadding,
       backgroundRadius: this._backgroundRadius,
       lineHeight: this._lineHeight,
     });
+    copy._tokenizedLines = this._tokenizedLines.map((line) => line.map((token) => ({ ...token })));
+    copy._renderToCanvas();
     this._copyBaseAttributesInto(copy, { copyChildren: false });
     return copy;
   }
@@ -663,6 +806,8 @@ export class Code extends VMobject {
    * Clean up Three.js and canvas resources
    */
   override dispose(): void {
+    this._disposed = true;
+    this._cancelHighlightWait?.();
     this._texture?.dispose();
     if (this._mesh) {
       this._mesh.geometry.dispose();

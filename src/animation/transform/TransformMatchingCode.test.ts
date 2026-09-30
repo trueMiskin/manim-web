@@ -10,32 +10,35 @@ import type { CodeToken } from '../../mobjects/text/CodeTokenLayout';
  * mocking is needed because token mobjects never build a Three.js object here.
  */
 
-function js(code: string): Code {
-  return new Code({ code, language: 'javascript', lineNumbers: false });
+/** Highlighting is asynchronous; token matching reads the highlighted tokens. */
+async function js(code: string): Promise<Code> {
+  const block = new Code({ code, language: 'javascript', lineNumbers: false });
+  await block.waitForRender();
+  return block;
 }
 
 describe('TransformMatchingCode', () => {
   describe('matching', () => {
-    it('matches every token when source and target are identical', () => {
-      const source = js('x = 1');
-      const target = js('x = 1');
+    it('matches every token when source and target are identical', async () => {
+      const source = await js('x = 1');
+      const target = await js('x = 1');
       const anim = new TransformMatchingCode(source, target);
       anim.begin();
 
-      // Tokens: x, ' ', =, ' ', 1  -> all five match, nothing fades.
-      expect(anim.matchedParts.length).toBe(5);
+      // Shiki tokens: 'x ', =, ' ', 1  -> all four match, nothing fades.
+      expect(anim.matchedParts.length).toBe(4);
       expect(anim.fadeInParts.length).toBe(0);
       expect(anim.fadeOutParts.length).toBe(0);
     });
 
-    it('fades out removed tokens and fades in added tokens for the diff', () => {
-      const source = js('x = 1');
-      const target = js('x = 2');
+    it('fades out removed tokens and fades in added tokens for the diff', async () => {
+      const source = await js('x = 1');
+      const target = await js('x = 2');
       const anim = new TransformMatchingCode(source, target);
       anim.begin();
 
-      // Unchanged: x, ' ', =, ' ' (4). Removed: 1. Added: 2.
-      expect(anim.matchedParts.length).toBe(4);
+      // Unchanged: 'x ', =, ' ' (3). Removed: 1. Added: 2.
+      expect(anim.matchedParts.length).toBe(3);
       expect(anim.fadeOutParts.length).toBe(1);
       expect(anim.fadeInParts.length).toBe(1);
 
@@ -43,9 +46,9 @@ describe('TransformMatchingCode', () => {
       expect(anim.fadeInParts[0].fadeIn).toBe(true);
     });
 
-    it('matches tokens, never recreates them: matched mobjects are not in the fade lists', () => {
-      const source = js('x = 1');
-      const target = js('x = 2');
+    it('matches tokens, never recreates them: matched mobjects are not in the fade lists', async () => {
+      const source = await js('x = 1');
+      const target = await js('x = 2');
       const anim = new TransformMatchingCode(source, target);
       anim.begin();
 
@@ -58,9 +61,9 @@ describe('TransformMatchingCode', () => {
       }
     });
 
-    it('hides the source and target blocks so only token mobjects show', () => {
-      const source = js('x = 1');
-      const target = js('x = 2');
+    it('hides the source and target blocks so only token mobjects show', async () => {
+      const source = await js('x = 1');
+      const target = await js('x = 2');
       const anim = new TransformMatchingCode(source, target);
       anim.begin();
 
@@ -75,9 +78,9 @@ describe('TransformMatchingCode', () => {
     // `source.parent`, which is null in that case, so nothing was ever attached
     // and the animation rendered a blank frame. The tokens must attach to the
     // source itself so they are in the scene graph and render.
-    it('attaches every token mobject to the source when the source has no parent', () => {
-      const source = js('x = 1');
-      const target = js('x = 2');
+    it('attaches every token mobject to the source when the source has no parent', async () => {
+      const source = await js('x = 1');
+      const target = await js('x = 2');
       const anim = new TransformMatchingCode(source, target);
       anim.begin();
 
@@ -93,10 +96,10 @@ describe('TransformMatchingCode', () => {
       expect(source.children.length).toBe(all.length);
     });
 
-    it('places token mobjects in the source-local frame when the source is moved', () => {
-      const source = js('foo');
+    it('places token mobjects in the source-local frame when the source is moved', async () => {
+      const source = await js('foo');
       source.moveTo([2, -1, 0]);
-      const target = js('foo');
+      const target = await js('foo');
       target.moveTo([2, -1, 0]);
       const anim = new TransformMatchingCode(source, target);
       anim.begin();
@@ -111,10 +114,10 @@ describe('TransformMatchingCode', () => {
   });
 
   describe('interpolation', () => {
-    it('moves a matched token from its source position to its target position', () => {
+    it('moves a matched token from its source position to its target position', async () => {
       // "foo" shifts down one line, so the matched token actually moves.
-      const source = js('foo');
-      const target = js('\nfoo');
+      const source = await js('foo');
+      const target = await js('\nfoo');
       const anim = new TransformMatchingCode(source, target);
       anim.begin();
 
@@ -140,9 +143,9 @@ describe('TransformMatchingCode', () => {
       expect(part.mobject.opacity).toBeCloseTo(1, 6);
     });
 
-    it('fades removed tokens out early and added tokens in late', () => {
-      const source = js('x = 1');
-      const target = js('x = 2');
+    it('fades removed tokens out early and added tokens in late', async () => {
+      const source = await js('x = 1');
+      const target = await js('x = 2');
       const anim = new TransformMatchingCode(source, target);
       anim.begin();
 
@@ -164,9 +167,9 @@ describe('TransformMatchingCode', () => {
       expect(fadeIn.mobject.opacity).toBeCloseTo(fadeIn.targetOpacity, 6);
     });
 
-    it('finish() leaves matched tokens at the target and fades resolved', () => {
-      const source = js('x = 1');
-      const target = js('x = 2');
+    it('finish() leaves matched tokens at the target and fades resolved', async () => {
+      const source = await js('x = 1');
+      const target = await js('x = 2');
       const anim = new TransformMatchingCode(source, target);
       anim.begin();
       anim.finish();
@@ -181,15 +184,21 @@ describe('TransformMatchingCode', () => {
   });
 
   describe('options', () => {
-    it('clamps fadeRatio into [0, 0.5]', () => {
-      expect(new TransformMatchingCode(js('a'), js('a'), { fadeRatio: 2 }).fadeRatio).toBe(0.5);
-      expect(new TransformMatchingCode(js('a'), js('a'), { fadeRatio: -1 }).fadeRatio).toBe(0);
-      expect(new TransformMatchingCode(js('a'), js('a'), { fadeRatio: 0.3 }).fadeRatio).toBe(0.3);
+    it('clamps fadeRatio into [0, 0.5]', async () => {
+      expect(
+        new TransformMatchingCode(await js('a'), await js('a'), { fadeRatio: 2 }).fadeRatio,
+      ).toBe(0.5);
+      expect(
+        new TransformMatchingCode(await js('a'), await js('a'), { fadeRatio: -1 }).fadeRatio,
+      ).toBe(0);
+      expect(
+        new TransformMatchingCode(await js('a'), await js('a'), { fadeRatio: 0.3 }).fadeRatio,
+      ).toBe(0.3);
     });
 
-    it('transformMismatches pairs the leftover tokens instead of fading them', () => {
-      const source = js('x = 1');
-      const target = js('x = 2');
+    it('transformMismatches pairs the leftover tokens instead of fading them', async () => {
+      const source = await js('x = 1');
+      const target = await js('x = 2');
       const anim = new TransformMatchingCode(source, target, { transformMismatches: true });
       anim.begin();
 
@@ -198,9 +207,9 @@ describe('TransformMatchingCode', () => {
       expect(anim.fadeInParts.length).toBe(0);
     });
 
-    it('fadeTransformMismatches cross-fades the mismatched pair', () => {
-      const source = js('x = 1');
-      const target = js('x = 2');
+    it('fadeTransformMismatches cross-fades the mismatched pair', async () => {
+      const source = await js('x = 1');
+      const target = await js('x = 2');
       const anim = new TransformMatchingCode(source, target, {
         transformMismatches: true,
         fadeTransformMismatches: true,
@@ -215,9 +224,9 @@ describe('TransformMatchingCode', () => {
       expect(pair.mobject.opacity).toBeGreaterThan(0.9);
     });
 
-    it('without fadeTransformMismatches the mismatched pair stays visible', () => {
-      const source = js('x = 1');
-      const target = js('x = 2');
+    it('without fadeTransformMismatches the mismatched pair stays visible', async () => {
+      const source = await js('x = 1');
+      const target = await js('x = 2');
       const anim = new TransformMatchingCode(source, target, { transformMismatches: true });
       anim.begin();
 
@@ -226,23 +235,23 @@ describe('TransformMatchingCode', () => {
       expect(pair.mobject.opacity).toBeGreaterThan(0.9);
     });
 
-    it('a custom keyFunc overrides the default token key', () => {
-      const source = js('x = 1');
-      const target = js('x = 2');
-      // Key everything the same: all five source tokens match five target tokens.
+    it('a custom keyFunc overrides the default token key', async () => {
+      const source = await js('x = 1');
+      const target = await js('x = 2');
+      // Key everything the same: all four source tokens match four target tokens.
       const anim = new TransformMatchingCode(source, target, {
         keyFunc: (_token: CodeToken) => 'SAME',
       });
       anim.begin();
 
-      expect(anim.matchedParts.length).toBe(5);
+      expect(anim.matchedParts.length).toBe(4);
       expect(anim.fadeInParts.length).toBe(0);
       expect(anim.fadeOutParts.length).toBe(0);
     });
 
-    it('matchBy "line" matches whole lines', () => {
-      const source = js('a\nb');
-      const target = js('a\nc');
+    it('matchBy "line" matches whole lines', async () => {
+      const source = await js('a\nb');
+      const target = await js('a\nc');
       const anim = new TransformMatchingCode(source, target, { matchBy: 'line' });
       anim.begin();
 
@@ -254,9 +263,9 @@ describe('TransformMatchingCode', () => {
   });
 
   describe('factory', () => {
-    it('transformMatchingCode returns a TransformMatchingCode with the given target', () => {
-      const source = js('a');
-      const target = js('b');
+    it('transformMatchingCode returns a TransformMatchingCode with the given target', async () => {
+      const source = await js('a');
+      const target = await js('b');
       const anim = transformMatchingCode(source, target);
       expect(anim).toBeInstanceOf(TransformMatchingCode);
       expect(anim.target).toBe(target);

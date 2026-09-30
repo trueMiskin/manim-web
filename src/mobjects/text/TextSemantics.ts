@@ -32,7 +32,14 @@ export function textGraphemes(source: string): Grapheme[] {
 export interface SemanticTextRun {
   id: string;
   mobjectId: string;
-  kind: 'text' | 'math';
+  kind: 'text' | 'math' | 'code';
+  /** Code stays in the raster capture; HTML supplies selection and copy controls. */
+  code?: {
+    language: string;
+    copyButton: boolean;
+    tabWidth: number;
+    lineCount: number;
+  };
   /** Complete logical source; math source is LaTeX, not plain prose. */
   source: string;
   /** Currently visible content only. Math content is LaTeX. */

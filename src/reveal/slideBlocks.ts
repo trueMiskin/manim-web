@@ -4,6 +4,8 @@ import { prepareMobjects } from '../core/readiness';
 import { ParagraphTextRun } from '../mobjects/text/RichParagraphRuns';
 import { MathTex, type MathTexOptions } from '../mobjects/text/MathTex';
 import { RichParagraph, type RichParagraphOptions } from '../mobjects/text/RichParagraph';
+import type { Code } from '../mobjects/text/Code';
+import { createSlideCode, validateSlideCode, type SlideCodeOptions } from './slideCode';
 import {
   SlideLayout,
   type LayoutRegion,
@@ -11,6 +13,8 @@ import {
   type SlidePlacement,
 } from './slideLayout';
 import { DEFAULT_SLIDE_THEME, slideColor, type SlideTheme } from './slideTheme';
+
+export type { SlideCodeOptions } from './slideCode';
 
 export interface SlideTextOptions {
   fontSize?: number;
@@ -136,6 +140,20 @@ export class SlideRegion {
     });
     this.layout.add(this.region, math, { align });
     return math;
+  }
+
+  /**
+   * Declare literal, selectable code with optional line numbers and a copy button.
+   * Code shrinks to fit its region; fit: 'none' keeps the authored font size.
+   * @post result.getCode() === source
+   */
+  code(source: string, options: SlideCodeOptions = {}): Code {
+    this.layout.assertOpen();
+    validateSlideCode(source, options);
+    const { align = 'left', fit = 'contain', height, ...style } = options;
+    const code = createSlideCode(source, this.theme, style);
+    this.layout.add(this.region, code, { align, fit, height });
+    return code;
   }
 
   /** Declare a list with wrapping and inline math, reserving space for every row. */
