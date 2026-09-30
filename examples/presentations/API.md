@@ -83,7 +83,7 @@ slide('closer', {
 });
 ```
 
-Blocks referenced by builds start hidden but reserve their space. All other content is visible in the initial `content` checkpoint. Each build adds its blocks immediately and keeps earlier content visible; it creates a navigation pause with its own notes and printable state. Block IDs belong to `paragraph`, `math`, `bullets`, or `image`. Build IDs must be distinct from the reserved initial ID `content`.
+Blocks referenced by `show` start hidden but reserve their space. Other ordinary blocks are visible in the initial `content` checkpoint; formula slots select their initial alternative as described below. A build's `show` adds its blocks immediately and keeps earlier content visible. Each build creates one navigation pause with its own notes and printable state. Block IDs belong to `paragraph`, `math`, `bullets`, or `image`. Build IDs must be distinct from the reserved initial ID `content`.
 
 To reveal a list one item at a time, use `{ id, text }` items and refer to their IDs in separate builds:
 
@@ -101,9 +101,34 @@ slide('observations', {
 });
 ```
 
-Use a list-level `id` to reveal the whole list, or item IDs for individual reveals; do not combine the two in one list. In a list with item IDs, string items appear immediately. The lesson topic in the [basic deck](basic/deck.ts) combines an initial formula with two named bullet builds.
+Use a list-level `id` to reveal the whole list, or item IDs for individual reveals; do not combine the two in one list. In a list with item IDs, string items appear immediately. The lesson topic in the [basic deck](basic/deck.ts) combines two formula transformations with their corresponding bullet reveals.
 
-For custom entrances, movement, or formula matching, add `sceneSlides('circle', () => import('./scene'))` to the same `slides` array or topic and author that module with `defineSlide`. See [basic/scene.ts](basic/scene.ts).
+### Transform formulas in place
+
+Place named `math` alternatives in a `slot`, then use `transformMath` in a build's `effects`:
+
+```ts
+import { math, slide, slot, transformMath } from 'manim-web/reveal';
+
+slide('squares', {
+  title: 'Move closer to the minimum',
+  content: slot([
+    math([{ key: 'input', latex: 'f(2)' }, '=', { key: 'output', latex: '4', color: 'accent' }], {
+      id: 'at-two',
+    }),
+    math([{ key: 'input', latex: 'f(1)' }, '=', { key: 'output', latex: '1', color: 'accent' }], {
+      id: 'at-one',
+    }),
+  ]),
+  builds: [{ id: 'first-step', effects: [transformMath('at-two', 'at-one', { duration: 0.8 })] }],
+});
+```
+
+The slot reserves space for its largest alternative, so neighboring content stays fixed. Its first formula is initially visible unless deferred by `show`; later alternatives stay hidden until targeted by a build. All alternatives are prepared before playback. Shared part `key` values match the same mathematical role across formulas even when its LaTeX changes. The transform uses the existing `TransformMatchingTex` animation; `duration` is in seconds.
+
+A build can contain `show`, `effects`, or both. `show` takes effect at the start, then all effects in that build run concurrently before the navigation pause. Use separate builds for consecutive transformations. The source formula must be visible and the destination must be fresh and hidden. A transform consumes its source: showing or targeting that source again is rejected. To return to an earlier expression, declare another `math` block with a fresh ID.
+
+For other custom entrances, movement, or animation sequencing, add `sceneSlides('circle', () => import('./scene'))` to the same `slides` array or topic and author that module with `defineSlide`. See [basic/scene.ts](basic/scene.ts).
 
 Choose either `slides` or `topics` when defining a presentation. Each flat slide occupies one horizontal position; builds and animation checkpoints are vertical pauses within it. Use explicit `topics` to group several scenes into the same horizontal stack. Existing topic decks retain their routes.
 

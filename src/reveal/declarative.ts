@@ -1,7 +1,11 @@
 import type { Mobject } from '../core/Mobject';
 import { ImageMobject } from '../mobjects/image';
+import { MathTex } from '../mobjects/text/MathTex';
+import { TransformMatchingTex } from '../animation/transform/TransformMatching';
 import { assertId, sceneSlides } from './authoring';
 import { contentBlocks, type LeafBlock, type SlideContent } from './declarativeBlocks';
+import type { SlideEffect } from './declarativeEffects';
+import { validateBuilds } from './declarativeValidation';
 import { defineSlide } from './defineSlide';
 import type { SlideRegion } from './slideBlocks';
 import type { SlideThemeOptions } from './slideTheme';
@@ -9,8 +13,10 @@ import type { SceneSlides, SlideAppearance } from './types';
 
 export interface SlideBuild {
   id: string;
-  /** Block IDs to show on this advance. Earlier content stays visible. */
-  show: readonly string[];
+  /** Block IDs to show immediately at the start of this advance. */
+  show?: readonly string[];
+  /** Effects run together after show; this build ends at one navigation pause. */
+  effects?: readonly SlideEffect[];
   title?: string;
   notes?: string;
 }
@@ -19,54 +25,13 @@ export interface DeclarativeSlideOptions extends SlideAppearance {
   title: string;
   content: SlideContent;
   theme?: SlideThemeOptions;
-  /** Unreferenced blocks appear initially; named builds reveal the remaining blocks. */
+  /** Named builds reveal content or transform formulas. Destinations start hidden. */
   builds?: readonly SlideBuild[];
 }
 
 interface PreparedBlock {
   id?: string;
   objects: readonly Mobject[];
-}
-
-function visitTargets(content: SlideContent, visit: (block: { id?: string }) => void): void {
-  for (const block of contentBlocks(content)) {
-    if (block.kind === 'columns') block.content.forEach((column) => visitTargets(column, visit));
-    else if (block.kind === 'bullets' && block.id === undefined) block.items.forEach(visit);
-    else visit(block);
-  }
-}
-
-/** Validate the document before allocating text, images, or a renderer. */
-function validateBuilds(
-  id: string,
-  content: SlideContent,
-  builds: readonly SlideBuild[],
-): Set<string> {
-  const names = new Set<string>();
-  visitTargets(content, (block) => {
-    if (block.id === undefined) return;
-    assertId(block.id);
-    if (names.has(block.id)) throw new Error(`Slide "${id}" has duplicate block ID "${block.id}".`);
-    names.add(block.id);
-  });
-  const steps = new Set(['content']);
-  const deferred = new Set<string>();
-  for (const build of builds) {
-    assertId(build.id);
-    if (steps.has(build.id))
-      throw new Error(`Slide "${id}" has duplicate or reserved build ID "${build.id}".`);
-    steps.add(build.id);
-    if (build.show.length === 0)
-      throw new Error(`Build "${id}/${build.id}" has no blocks to show.`);
-    for (const name of build.show) {
-      if (!names.has(name))
-        throw new Error(`Build "${id}/${build.id}" refers to unknown block "${name}".`);
-      if (deferred.has(name))
-        throw new Error(`Slide "${id}" reveals block "${name}" more than once.`);
-      deferred.add(name);
-    }
-  }
-  return deferred;
 }
 
 function prepareLeaf(
@@ -94,6 +59,7 @@ function prepareContent(region: SlideRegion, content: SlideContent): PreparedBlo
       const regions = region.columns(block.widths);
       return block.content.flatMap((column, index) => prepareContent(regions[index], column));
     }
+    if (block.kind === 'slot') return prepareContent(region.slot(), block.content);
     if (block.kind === 'bullets') {
       const rows = region.bullets(
         block.items.map((item) => item.text),
@@ -108,7 +74,7 @@ function prepareContent(region: SlideRegion, content: SlideContent): PreparedBlo
 }
 
 /**
- * Describe a complete slide. Content is visible by default and builds are additive.
+ * Describe a complete slide with named reveals and formula transformations.
  * Each build allocates fresh objects, so a document can be replayed or reused.
  * @post result.kind === 'scene' && result.id === id
  */
@@ -130,7 +96,20 @@ export function slide(id: string, options: DeclarativeSlideOptions): SceneSlides
       for (const build of builds) {
         await s.step(
           { id: build.id, title: build.title, notes: build.notes ?? options.notes },
-          () => s.show(...build.show.flatMap((name) => named.get(name)!)),
+          async () => {
+            await s.show(...(build.show ?? []).flatMap((name) => named.get(name)!));
+            const effects = (build.effects ?? []).map((effect) => {
+              const from = named.get(effect.from)![0];
+              const to = named.get(effect.to)![0];
+              if (!(from instanceof MathTex) || !(to instanceof MathTex))
+                throw new Error('Formula transforms require prepared math blocks.');
+              return new TransformMatchingTex(from, to, {
+                ...effect.options,
+                duration: effect.options.duration ?? s.theme.duration,
+              });
+            });
+            if (effects.length > 0) await s.play(...effects);
+          },
         );
       }
     } catch (error) {

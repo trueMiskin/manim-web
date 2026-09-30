@@ -19,7 +19,7 @@ Every presentation example includes a **Colors** selector for light/dark palette
 
 See the [authoring API](API.md) for scene steps, embedded playback, text contracts and capture options, including [named color palettes](API.md#switch-color-palettes). Switching rebuilds the slides and print snapshots without changing typography.
 
-For content pages, declare blocks with `slide`, as in [intro.ts](basic/intro.ts) and [bullets.ts](basic/bullets.ts). Named builds reveal selected blocks or individual bullet items while preserving the layout. The lesson topic in [deck.ts](basic/deck.ts) demonstrates formulas and columns with an image.
+For content pages, declare blocks with `slide`, as in [intro.ts](basic/intro.ts) and [bullets.ts](basic/bullets.ts). Named builds reveal selected blocks or individual bullet items while preserving the layout. The lesson topic in [deck.ts](basic/deck.ts) also demonstrates formula transformations with `slot` and `transformMath`, and columns with an image.
 
 For custom animation, `defineSlide({ title }, async s => { ... })` handles layout and preparation. Declare `s.paragraph(...)`, `s.math(...)`, and `s.bullets(...)` before the first `s.step(...)`, then reveal them at the desired pauses. Hidden content reserves space; paragraphs wrap, and overflow produces an error. Use `s.columns(...)` and `region.place(...)` for diagrams, and ordinary Manim animations through `s.play(...)`. Read [scene.ts](basic/scene.ts) for a short animation, [gradient.ts](lesson/gradient.ts) for teaching checkpoints, then [quadratic.ts](lesson/quadratic.ts) for a formula transformation.
 

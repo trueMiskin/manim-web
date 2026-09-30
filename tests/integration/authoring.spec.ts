@@ -20,7 +20,8 @@ const fixture = '/tests/integration/authoring.html';
 const currentLeaf = '.reveal .slides > section.present > section.present';
 
 // MIGRATION: declarative slides preserve their content, column layout, and
-// additive builds across direct links, navigation, palette changes, and printing.
+// additive builds and formula slots across direct links, partial replay,
+// navigation, palette changes, and printing without moving surrounding content.
 test('the basic deck mounts, reveals named bullet items, and prepares every handout state', async ({
   page,
 }, testInfo) => {
@@ -37,20 +38,80 @@ test('the basic deck mounts, reveals named bullet items, and prepares every hand
     failed,
   ]);
   expect(await page.evaluate(() => window.__MANIM_PRESENTATION__?.error)).toBeUndefined();
+  const closerState = async (latex: string) => {
+    await page.waitForFunction(() => {
+      const player = window.__MANIM_PRESENTATION__?.player;
+      return player && !player.isPlaying;
+    });
+    const state = await page.evaluate(() => {
+      const player = window.__MANIM_PRESENTATION__!.player!;
+      const runs = player.inspectText();
+      // Display formulas have a named input part; bullet formulas are single runs.
+      const formulas = runs.filter((run) => run.kind === 'math' && /^f\([012]\)$/.test(run.text));
+      return {
+        formulas: formulas.map(({ mobjectId }) => {
+          const parts = runs.filter((run) => run.mobjectId === mobjectId);
+          return {
+            latex: parts.map((run) => run.text).join(''),
+            top: Math.min(...parts.map((run) => run.transform[5])),
+          };
+        }),
+        surrounding: runs
+          .filter(
+            (run) => run.source.startsWith('Start at two') || run.source.startsWith('Move closer'),
+          )
+          .map(({ text, width, height, transform }) => ({ text, width, height, transform })),
+        image: player.scene.renderer.getCanvas().toDataURL(),
+      };
+    });
+    expect(state.formulas).toHaveLength(1);
+    expect(state.formulas[0].latex).toBe(latex);
+    return state;
+  };
   await expect(page.locator(currentLeaf)).toHaveAttribute('id', 'lesson--closer--minimum');
   await expect(page.locator(`${currentLeaf} .manim-selection`)).toContainText('output falls');
   await expect(page.locator(`${currentLeaf} .manim-selection`)).toContainText('output reaches');
   await expect(page.locator('.manim-handout .manim-page')).toHaveCount(16);
+  const minimum = await closerState('f(0)=0');
 
   await page.keyboard.press('ArrowUp');
   await expect(page.locator(currentLeaf)).toHaveAttribute('id', 'lesson--closer--first-step');
   await expect(page.locator(`${currentLeaf} .manim-selection`)).toContainText('output falls');
   await expect(page.locator(`${currentLeaf} .manim-selection`)).not.toContainText('output reaches');
+  const firstStep = await closerState('f(1)=1');
+  expect(firstStep.surrounding).toEqual(minimum.surrounding);
+  expect(firstStep.formulas[0].top).toBeCloseTo(minimum.formulas[0].top);
   await page.keyboard.press('ArrowUp');
   await expect(page.locator(currentLeaf)).toHaveAttribute('id', 'lesson--closer--content');
   await expect(page.locator(`${currentLeaf} .manim-selection`)).not.toContainText('output falls');
+  const initial = await closerState('f(2)=4');
+  expect(initial.surrounding).toEqual(minimum.surrounding);
+  expect(initial.formulas[0].top).toBeCloseTo(minimum.formulas[0].top);
   await page.keyboard.press('ArrowDown');
   await expect(page.locator(`${currentLeaf} .manim-selection`)).toContainText('output falls');
+  expect(await closerState('f(1)=1')).toEqual(firstStep);
+
+  await page.keyboard.press('r');
+  await expect
+    .poll(() => page.evaluate(() => window.__MANIM_PRESENTATION__!.player!.isPlaying))
+    .toBe(true);
+  await page.evaluate(() => {
+    const player = window.__MANIM_PRESENTATION__!.player!;
+    const checkpoint = player.checkpoints.find(({ id }) => id === 'first-step')!;
+    player.pause();
+    player.seek((checkpoint.startTime + checkpoint.endTime) / 2);
+  });
+  await page.keyboard.press('ArrowUp');
+  await expect(page.locator(currentLeaf)).toHaveAttribute('id', 'lesson--closer--content');
+  expect(await closerState('f(2)=4')).toEqual(initial);
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator(currentLeaf)).toHaveAttribute('id', 'lesson--closer--first-step');
+  expect(await closerState('f(1)=1')).toEqual(firstStep);
+  await page.keyboard.press('ArrowDown');
+  await expect(page.locator(currentLeaf)).toHaveAttribute('id', 'lesson--closer--minimum');
+  expect(await closerState('f(0)=0')).toEqual(minimum);
+  await page.keyboard.press('ArrowUp');
+  await expect(page.locator(currentLeaf)).toHaveAttribute('id', 'lesson--closer--first-step');
 
   await page.keyboard.press('Shift+Space');
   await expect(page.locator(currentLeaf)).toHaveAttribute('id', 'lesson--closer--content');
