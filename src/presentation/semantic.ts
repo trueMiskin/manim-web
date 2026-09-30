@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { Scene } from '../core/Scene';
 import type { Mobject } from '../core/Mobject';
 import type { SemanticTextRun } from '../mobjects/text/TextSemantics';
+import { createCodeOverlay } from './codeSemantic';
 
 export interface ProjectedTextRun extends SemanticTextRun {
   width: number;
@@ -113,6 +114,10 @@ export function appendSemanticText(
 ): void {
   const context = document.createElement('canvas').getContext('2d');
   for (const run of runs) {
+    if (run.kind === 'code') {
+      container.append(createCodeOverlay(run, context));
+      continue;
+    }
     const element = document.createElement('span');
     element.dataset.semanticId = run.id;
     element.dataset.kind = run.kind;

@@ -4,7 +4,7 @@
 
 ## Content slides
 
-Start with `slide` for prose, formulas, lists, images, and columns. Content appears immediately by default, with shared typography and automatic layout. Run `slides init my-presentation` to copy the [basic starter](basic/deck.ts), which combines declarative content and custom animation in grouped topics. A small deck can also use a flat `slides` array:
+Start with `slide` for prose, formulas, code, lists, images, and columns. Content appears immediately by default, with shared typography and automatic layout. Run `slides init my-presentation` to copy the [basic starter](basic/deck.ts), which combines declarative content and custom animation in grouped topics. A small deck can also use a flat `slides` array:
 
 ```ts
 import { bullets, math, paragraph, presentation, slide } from 'manim-web/reveal';
@@ -42,6 +42,64 @@ const mounted = await mountPresentation('#presentation', deck, {
 `mountPresentation` creates the Reveal structure, loads its styles and notes plugin, and initializes navigation. Supplying `assets` loads the handout manifest produced by `slides build`; omitting it prepares the presentation in the browser. Keep the existing `manimPresentation` plugin API when your application initializes Reveal itself.
 
 `paragraph` and `bullets` support `$inline math$`; `math` accepts LaTeX without dollar delimiters. Use `String.raw` for strings containing LaTeX backslashes. Block options accept local font sizes and palette color roles such as `'accent'`. The presentation's `theme` supplies defaults to content slides and custom `defineSlide` scenes. Set `preset` to `'dark'` or `'light'` for the initial palette; without custom palettes, both presets are available in the color selector.
+
+### Code blocks
+
+Use `code` for a literal code sample, with selectable text, line numbers, and a Copy button:
+
+```ts
+import { code, columns, paragraph, slide } from 'manim-web/reveal';
+
+slide('function', {
+  title: 'Double the input',
+  content: columns([
+    code(
+      `int twice(int value) {
+    return value * 2;
+}`,
+      { language: 'cpp', lineNumbers: true, copyButton: true },
+    ),
+    paragraph('Calling twice(3) returns 6.'),
+  ]),
+});
+```
+
+Line numbers and the Copy button default to `true`; either can be disabled independently. At a paused presentation checkpoint, select code with the mouse or copy the whole sample with the button. Copying preserves the original source, including indentation and tabs, and excludes the line-number gutter. Code is literal: dollar signs and angle brackets do not introduce math or HTML. An empty string represents a blank code line.
+
+Code uses a monospace font and the slide's `bodySize`, independently of the prose font. Set `fontFamily` and optional `fontUrl` to supply a specific code font; imported font URLs travel with portable builds. Syntax colors inherit the selected slide palette unless `colorScheme` supplies a complete `CodeColorScheme`.
+
+Highlighting uses Shiki's TextMate grammars, which retain context across source lines, including multiline comments and strings. Grammar highlighting does not resolve symbol identities like a compiler or language server.
+
+Supported `language` values and aliases are:
+
+| Language   | Value        | Aliases            |
+| ---------- | ------------ | ------------------ |
+| C          | `c`          |                    |
+| C++        | `cpp`        | `c++`, `cxx`, `cc` |
+| Python     | `python`     | `py`, `python3`    |
+| JavaScript | `javascript` | `js`               |
+| TypeScript | `typescript` | `ts`               |
+| Java       | `java`       |                    |
+| Rust       | `rust`       | `rs`               |
+| Go         | `go`         | `golang`           |
+
+Names are case-insensitive. Omitted, plain-text, and unknown language names display literal code without syntax coloring. The browser loads Shiki and each supported grammar lazily, then caches them for reuse. Its JavaScript regex engine and grammar assets are bundled with the presentation; highlighting needs neither a remote service nor WebAssembly. The existing `CodeColorScheme` determines token colors; there is no separate named-theme option.
+
+Code blocks fit their column without wrapping source lines. Use `fit: 'none'` to keep the authored font size and report overflow, or `height` to reserve an area in scene units. Other options include `fontSize`, `lineHeight`, `tabWidth`, `align`, `showBackground`, `backgroundPadding`, and `backgroundRadius`. Give a code block an `id` to reveal it in a named build like any other content block. The [basic code example](basic/code.ts) pairs code with a progressive explanation.
+
+For custom animation, `s.code(source, options)` and `region.code(source, options)` return ordinary `Code` objects. Declare them before the first step, then use `s.show`, `s.reveal`, or `s.play` as usual. The Copy button belongs to interactive playback and is omitted from printed handouts.
+
+Presentation preparation automatically waits for highlighting and fonts before laying out or capturing code. When using `Code` directly, await `waitForRender()` before inspecting highlighted tokens or capturing the rendered result:
+
+```ts
+import { Code } from 'manim-web';
+
+const sample = new Code({ code: 'auto result = school::twice(3);', language: 'cpp' });
+await sample.waitForRender();
+const tokens = sample.getLineOfCode(1)?.tokens;
+```
+
+Construction and setters remain synchronous. After `setCode` or `setLanguage`, await `waitForRender()` again when the next operation requires completed highlighting. The original source remains available immediately through `getCode()`.
 
 ### Columns and images
 
@@ -83,7 +141,7 @@ slide('closer', {
 });
 ```
 
-Blocks referenced by `show` start hidden but reserve their space. Other ordinary blocks are visible in the initial `content` checkpoint; formula slots select their initial alternative as described below. A build's `show` adds its blocks immediately and keeps earlier content visible. Each build creates one navigation pause with its own notes and printable state. Block IDs belong to `paragraph`, `math`, `bullets`, or `image`. Build IDs must be distinct from the reserved initial ID `content`.
+Blocks referenced by `show` start hidden but reserve their space. Other ordinary blocks are visible in the initial `content` checkpoint; formula slots select their initial alternative as described below. A build's `show` adds its blocks immediately and keeps earlier content visible. Each build creates one navigation pause with its own notes and printable state. Block IDs belong to `paragraph`, `math`, `code`, `bullets`, or `image`. Build IDs must be distinct from the reserved initial ID `content`.
 
 To reveal a list one item at a time, use `{ id, text }` items and refer to their IDs in separate builds:
 
@@ -292,7 +350,7 @@ await s.step({ id: 'reflection' }, () => s.reveal(reflection));
 await s.step({ id: 'refraction' }, () => s.replace(reflection, refraction));
 ```
 
-Declare all alternatives before the first step. They share a top anchor and their chosen horizontal alignment; hidden alternatives reserve space without appearing. Neighboring content stays fixed. `slot()` returns a region with the usual `paragraph`, `math`, `bullets`, `place`, `figure`, and `columns` helpers. A figure or bullet list remains a complete arrangement inside its alternative.
+Declare all alternatives before the first step. They share a top anchor and their chosen horizontal alignment; hidden alternatives reserve space without appearing. Neighboring content stays fixed. `slot()` returns a region with the usual `paragraph`, `math`, `code`, `bullets`, `place`, `figure`, and `columns` helpers. A figure or bullet list remains a complete arrangement inside its alternative.
 
 `s.replace(previous, next, options?)` crossfades two objects in their existing positions, using the theme duration by default. Its options accept `duration` and `rateFunc`; use ordinary animations for movement. It does not choose or reposition an alternative automatically. For formula matching or simultaneous changes to a diagram and its description, use ordinary animations in one `s.play(...)` call:
 

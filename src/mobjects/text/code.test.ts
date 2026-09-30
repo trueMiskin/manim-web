@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
 import { Code, DEFAULT_COLOR_SCHEME, MONOKAI_COLOR_SCHEME, TokenType } from './Code';
+import { Group } from '../../core/Group';
 
 /** Stub canvas 2D context (happy-dom lacks canvas support) */
 beforeAll(() => {
@@ -31,6 +32,11 @@ beforeAll(() => {
   } as typeof orig;
 });
 
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
+
 function tokenTexts(code: Code, type: TokenType): string[] {
   const result: string[] = [];
   for (let i = 1; i <= code.getLineCount(); i++) {
@@ -41,6 +47,98 @@ function tokenTexts(code: Code, type: TokenType): string[] {
 }
 
 describe('Code', () => {
+  describe('presentation semantics', () => {
+    // MIGRATION: every source survives selection/copy exactly, with bounds that
+    // exclude its gutter and padding; grouping preserves its world geometry.
+    it('keeps exact source and text bounds while participating in group layout', () => {
+      const source = '\tint x;\nreturn x;\n';
+      const code = new Code({ code: source, language: 'CPP', copyButton: true, tabWidth: 2 });
+      expect(code.isEmpty()).toBe(false);
+      expect(code.getWidth()).toBeGreaterThan(0);
+      const run = code.getSemanticTextRuns()[0];
+      expect(run).toMatchObject({
+        kind: 'code',
+        source,
+        text: source,
+        sourceRange: [0, source.length],
+        readingOrder: 0,
+        code: { language: 'cpp', copyButton: true, tabWidth: 2, lineCount: 3 },
+        font: { family: 'monospace', size: 24, lineHeight: 1.4 },
+      });
+      expect(run.bounds.width).toBeCloseTo(0.45);
+      expect(run.bounds.height).toBeCloseTo((24 * 1.4 * 3) / 100);
+      expect(run.bounds.x).toBeCloseTo(-code.getWidth() / 2 + 0.33);
+      expect(run.bounds.y + run.bounds.height).toBeCloseTo(code.getHeight() / 2 - 0.16);
+      code.scale(1.7).shift([2, -1, 0]);
+      const before = code.getBounds();
+      const group = new Group(code);
+      expect(group.isEmpty()).toBe(false);
+      expect(code.getBounds()).toEqual(before);
+      group.shift([3, 2, 0]);
+      expect(code.getCenter()[0]).toBeCloseTo(5);
+      expect(code.getCenter()[1]).toBeCloseTo(1);
+      expect(code.copy().getSemanticTextRuns()[0]).toMatchObject({
+        source,
+        text: source,
+        code: run.code,
+        font: run.font,
+      });
+      const unnumbered = new Code({ code: source, tabWidth: 2, lineNumbers: false });
+      expect(unnumbered.getSemanticTextRuns()[0].bounds.width).toBe(run.bounds.width);
+      expect(unnumbered.getSemanticTextRuns()[0].code?.copyButton).toBe(false);
+      expect(unnumbered.getWidth()).toBeLessThan(code.getWidth());
+    });
+
+    // MIGRATION: waiting for any font asset uses its ready metrics and copy()
+    // retains its portable font metadata and presentation options.
+    it('waits for font readiness and preserves font assets in copies', async () => {
+      let loaded = false;
+      const originalCreateElement = document.createElement.bind(document);
+      const fontLoad = vi.fn(async () => []);
+      vi.stubGlobal('document', {
+        createElement: originalCreateElement,
+        fonts: { add: vi.fn(), load: fontLoad },
+      });
+      vi.stubGlobal(
+        'FontFace',
+        class {
+          async load() {
+            loaded = true;
+            return this;
+          }
+        },
+      );
+      const getContext = HTMLCanvasElement.prototype.getContext;
+      vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(function (
+        this: HTMLCanvasElement,
+        type: string,
+      ) {
+        const context = getContext.call(this, type) as CanvasRenderingContext2D;
+        context.measureText = (text: string) =>
+          ({ width: text.length * (loaded ? 20 : 10) }) as TextMetrics;
+        return context;
+      });
+      const code = new Code({
+        code: 'int value;',
+        language: 'cpp',
+        copyButton: true,
+        fontUrl: '/fonts/code-test.ttf',
+        lineNumbers: false,
+      });
+      const before = code.getWidth();
+      await code.waitForRender();
+      expect(code.getWidth()).toBeGreaterThan(before);
+      const run = code.getSemanticTextRuns()[0];
+      expect(run.font.url).toBe('/fonts/code-test.ttf');
+      expect(run.font.family).toMatch(/^'ManimFont_/);
+      expect(fontLoad).toHaveBeenLastCalledWith(`48px ${run.font.family}`, 'int value;');
+      const copy = code.copy();
+      await copy.waitForRender();
+      expect(copy.getSemanticTextRuns()[0]).toMatchObject({ font: run.font, code: run.code });
+      expect(copy.getWidth()).toBe(code.getWidth());
+    });
+  });
+
   describe('constructor', () => {
     it('should create with code string and default language', () => {
       const c = new Code({ code: 'hello world' });
@@ -72,12 +170,13 @@ describe('Code', () => {
       expect(c.getCode()).toBe('new');
     });
 
-    it('should update line count and re-tokenize on setCode', () => {
+    it('should update line count and re-tokenize on setCode', async () => {
       const c = new Code({ code: 'hello', language: 'python' });
       expect(c.getLineCount()).toBe(1);
       c.setCode('def foo():\n    return 42');
+      await c.waitForRender();
       expect(c.getLineCount()).toBe(2);
-      expect(tokenTexts(c, 'keyword')).toContain('def');
+      expect(tokenTexts(c, 'function')).toContain('foo');
       expect(tokenTexts(c, 'keyword')).toContain('return');
     });
   });
@@ -90,11 +189,12 @@ describe('Code', () => {
       expect(c.getLanguage()).toBe('typescript');
     });
 
-    it('should re-tokenize when language changes', () => {
+    it('should re-tokenize when language changes', async () => {
       const c = new Code({ code: 'def foo():', language: 'text' });
-      expect(tokenTexts(c, 'keyword')).not.toContain('def');
+      expect(tokenTexts(c, 'function')).not.toContain('foo');
       c.setLanguage('python');
-      expect(tokenTexts(c, 'keyword')).toContain('def');
+      await c.waitForRender();
+      expect(tokenTexts(c, 'function')).toContain('foo');
     });
   });
 
@@ -138,191 +238,29 @@ describe('Code', () => {
     });
   });
 
-  describe('tokenization - Python', () => {
-    it('should recognize keywords', () => {
-      const kw = tokenTexts(
-        new Code({ code: 'def class return if else', language: 'python' }),
-        'keyword',
-      );
-      expect(kw).toContain('def');
-      expect(kw).toContain('class');
-      expect(kw).toContain('return');
-      expect(kw).toContain('if');
-      expect(kw).toContain('else');
-    });
-
-    it('should recognize self keyword', () => {
-      expect(tokenTexts(new Code({ code: 'self.x = 1', language: 'python' }), 'keyword')).toContain(
-        'self',
-      );
-    });
-
-    it('should detect comments with #', () => {
-      const comments = tokenTexts(
-        new Code({ code: '# this is a comment', language: 'python' }),
-        'comment',
-      );
-      expect(comments.length).toBeGreaterThan(0);
-      expect(comments[0]).toContain('# this is a comment');
-    });
-
-    it('should detect double and single-quoted strings', () => {
-      const dq = tokenTexts(new Code({ code: 'x = "hello"', language: 'python' }), 'string');
-      expect(dq.length).toBeGreaterThan(0);
-      expect(dq[0]).toContain('hello');
-      const sq = tokenTexts(new Code({ code: "x = 'world'", language: 'python' }), 'string');
-      expect(sq.length).toBeGreaterThan(0);
-      expect(sq[0]).toContain('world');
-    });
-
-    it('should detect function calls', () => {
-      expect(
-        tokenTexts(new Code({ code: 'print("hello")', language: 'python' }), 'function'),
-      ).toContain('print');
-    });
-
-    it('should detect integers, floats, and hex numbers', () => {
-      expect(tokenTexts(new Code({ code: 'x = 42', language: 'python' }), 'number')).toContain(
-        '42',
-      );
-      expect(tokenTexts(new Code({ code: 'x = 3.14', language: 'python' }), 'number')).toContain(
-        '3.14',
-      );
-      expect(tokenTexts(new Code({ code: 'x = 0xFF', language: 'python' }), 'number')).toContain(
-        '0xFF',
-      );
-    });
-
-    it('should detect operators and punctuation', () => {
-      expect(tokenTexts(new Code({ code: 'x == y', language: 'python' }), 'operator')).toContain(
-        '==',
-      );
-      expect(tokenTexts(new Code({ code: 'x != y', language: 'python' }), 'operator')).toContain(
-        '!=',
-      );
-      const punc = tokenTexts(new Code({ code: 'foo(x, y)', language: 'python' }), 'punctuation');
-      expect(punc).toContain('(');
-      expect(punc).toContain(')');
-      expect(punc).toContain(',');
-    });
-
-    it('should detect builtin types', () => {
-      expect(tokenTexts(new Code({ code: 'x: int = 5', language: 'python' }), 'type')).toContain(
-        'int',
-      );
-    });
-
-    it('should handle mixed code with keywords and comments', () => {
-      const c = new Code({ code: 'def add(a, b):\n    return a + b  # sum', language: 'python' });
-      const kw = tokenTexts(c, 'keyword');
-      expect(kw).toContain('def');
-      expect(kw).toContain('return');
-      expect(tokenTexts(c, 'comment').length).toBeGreaterThan(0);
-    });
-  });
-
-  describe('tokenization - JavaScript', () => {
-    it('should recognize keywords', () => {
-      const kw = tokenTexts(
-        new Code({ code: 'const let function return', language: 'javascript' }),
-        'keyword',
-      );
-      expect(kw).toContain('const');
-      expect(kw).toContain('let');
-      expect(kw).toContain('function');
-      expect(kw).toContain('return');
-    });
-
-    it('should detect // and /* */ comments', () => {
-      const sl = tokenTexts(new Code({ code: '// comment', language: 'javascript' }), 'comment');
-      expect(sl[0]).toContain('// comment');
-      const ml = tokenTexts(
-        new Code({ code: '/* comment */ x', language: 'javascript' }),
-        'comment',
-      );
-      expect(ml[0]).toContain('/* comment */');
-    });
-
-    it('should detect strings, function calls, numbers, and operators', () => {
-      expect(
-        tokenTexts(new Code({ code: 'const s = "hello";', language: 'javascript' }), 'string')
-          .length,
-      ).toBeGreaterThan(0);
-      expect(
-        tokenTexts(new Code({ code: 'console.log("hi")', language: 'javascript' }), 'function'),
-      ).toContain('log');
-      expect(
-        tokenTexts(new Code({ code: 'const x = 42;', language: 'javascript' }), 'number'),
-      ).toContain('42');
-      const ops = tokenTexts(
-        new Code({ code: 'a === b !== c', language: 'javascript' }),
-        'operator',
-      );
-      expect(ops).toContain('===');
-      expect(ops).toContain('!==');
-    });
-
-    it('should detect arrow operator', () => {
-      const c = new Code({ code: 'const fn = () => {}', language: 'javascript' });
-      expect(tokenTexts(c, 'keyword')).toContain('const');
-      expect(tokenTexts(c, 'operator')).toContain('=>');
-    });
-  });
-
-  describe('tokenization - TypeScript', () => {
-    it('should recognize TS-specific keywords and builtin types', () => {
-      const kw = tokenTexts(
-        new Code({ code: 'interface type readonly', language: 'typescript' }),
-        'keyword',
-      );
-      expect(kw).toContain('interface');
-      expect(kw).toContain('type');
-      expect(kw).toContain('readonly');
-      expect(
-        tokenTexts(new Code({ code: 'const m: Map = new Map()', language: 'typescript' }), 'type'),
-      ).toContain('Map');
-    });
-  });
-
-  describe('tokenization - generic', () => {
-    it('should handle empty and whitespace-only lines', () => {
-      const empty = new Code({ code: '', language: 'python' });
-      expect(empty.getLineOfCode(1)!.tokens).toEqual([]);
-      const ws = new Code({ code: '    ', language: 'python' });
-      for (const t of ws.getLineOfCode(1)!.tokens) expect(t.type).toBe('default');
-    });
-
-    it('should handle binary, octal, and scientific number literals', () => {
-      expect(tokenTexts(new Code({ code: 'x = 0b1010', language: 'python' }), 'number')).toContain(
-        '0b1010',
-      );
-      expect(tokenTexts(new Code({ code: 'x = 0o777', language: 'python' }), 'number')).toContain(
-        '0o777',
-      );
-      expect(tokenTexts(new Code({ code: 'x = 1e10', language: 'python' }), 'number')).toContain(
-        '1e10',
-      );
-    });
-
-    it('should not treat identifier-embedded digits as numbers', () => {
-      const nums = tokenTexts(new Code({ code: 'x2 = 1', language: 'python' }), 'number');
-      expect(nums).not.toContain('2');
-      expect(nums).toContain('1');
-    });
-
-    it('should handle unknown language gracefully', () => {
-      const c = new Code({ code: 'some random text', language: 'brainfuck' });
-      expect(c.getLineCount()).toBe(1);
-      expect(tokenTexts(c, 'keyword')).toHaveLength(0);
-    });
-
-    it('should handle escaped characters in strings', () => {
-      const strings = tokenTexts(
-        new Code({ code: 'x = "hello\\nworld"', language: 'python' }),
-        'string',
-      );
-      expect(strings.length).toBeGreaterThan(0);
-      expect(strings[0]).toContain('hello');
+  describe('grammar highlighting', () => {
+    // MIGRATION: full-source highlighting is lossless and carries lexical state
+    // across lines; display tab expansion never changes the copyable source.
+    it('waits for multiline grammar tokens while retaining exact source', async () => {
+      const source = '/* first\n\tcontinued */\nint value = 42;\n';
+      const code = new Code({ code: source, language: 'cpp', tabWidth: 2 });
+      expect(code.getLineOfCode(2)?.tokens).toEqual([{ text: '  continued */', type: 'default' }]);
+      await code.waitForRender();
+      expect(code.getLineOfCode(2)?.tokens.every((token) => token.type === 'comment')).toBe(true);
+      expect(tokenTexts(code, 'number')).toContain('42');
+      const displayed = () =>
+        Array.from({ length: code.getLineCount() }, (_, i) =>
+          code
+            .getLineOfCode(i + 1)!
+            .tokens.map((token) => token.text)
+            .join(''),
+        ).join('\n');
+      expect(displayed()).toBe(source.replace(/\t/g, '  '));
+      expect(code.getSemanticTextRuns()[0].source).toBe(source);
+      code.setLanguage('unknown-language');
+      await code.waitForRender();
+      expect(tokenTexts(code, 'comment')).toEqual([]);
+      expect(displayed()).toBe(source.replace(/\t/g, '  '));
     });
   });
 
@@ -393,207 +331,6 @@ describe('Code', () => {
       expect(c.getCenter()).toEqual([0, 0, 0]);
       c.position.set(2, 3, 4);
       expect(c.getCenter()).toEqual([2, 3, 4]);
-    });
-  });
-
-  describe('multi-language support', () => {
-    it('should tokenize Rust keywords', () => {
-      const kw = tokenTexts(
-        new Code({ code: 'fn main() {\n    let x = 42;\n}', language: 'rust' }),
-        'keyword',
-      );
-      expect(kw).toContain('fn');
-      expect(kw).toContain('let');
-    });
-
-    it('should tokenize Go keywords', () => {
-      const kw = tokenTexts(
-        new Code({ code: 'func main() {\n    var x = 42\n}', language: 'go' }),
-        'keyword',
-      );
-      expect(kw).toContain('func');
-      expect(kw).toContain('var');
-    });
-
-    it('should tokenize Java keywords', () => {
-      const kw = tokenTexts(
-        new Code({ code: 'public class Main {\n    int x = 42;\n}', language: 'java' }),
-        'keyword',
-      );
-      expect(kw).toContain('public');
-      expect(kw).toContain('class');
-      expect(kw).toContain('int');
-    });
-
-    it('should tokenize C++ keywords', () => {
-      const kw = tokenTexts(
-        new Code({ code: 'int main() {\n    auto x = 42;\n    return 0;\n}', language: 'cpp' }),
-        'keyword',
-      );
-      expect(kw).toContain('int');
-      expect(kw).toContain('auto');
-      expect(kw).toContain('return');
-    });
-  });
-
-  describe('tokenization - Python strings', () => {
-    it('should detect f-strings', () => {
-      const strings = tokenTexts(
-        new Code({ code: 'x = f"hello {name}"', language: 'python' }),
-        'string',
-      );
-      expect(strings.length).toBeGreaterThan(0);
-    });
-
-    it('should detect r-strings (raw strings)', () => {
-      const strings = tokenTexts(
-        new Code({ code: "x = r'raw\\nstring'", language: 'python' }),
-        'string',
-      );
-      expect(strings.length).toBeGreaterThan(0);
-    });
-
-    it('should detect triple-quoted strings', () => {
-      const strings = tokenTexts(
-        new Code({ code: 'x = """triple\nquoted"""', language: 'python' }),
-        'string',
-      );
-      expect(strings.length).toBeGreaterThan(0);
-    });
-
-    it('should detect triple-quoted strings on the same line', () => {
-      const strings = tokenTexts(
-        new Code({ code: 'x = """hello world"""', language: 'python' }),
-        'string',
-      );
-      // Triple quotes are tokenized (though imperfectly for complex cases)
-      expect(strings.length).toBeGreaterThan(0);
-    });
-
-    it('should detect triple single-quoted strings', () => {
-      const strings = tokenTexts(
-        new Code({ code: "x = '''multi line'''", language: 'python' }),
-        'string',
-      );
-      expect(strings.length).toBeGreaterThan(0);
-    });
-
-    it('should handle unclosed string at end of line', () => {
-      const strings = tokenTexts(new Code({ code: 'x = "unclosed', language: 'python' }), 'string');
-      expect(strings.length).toBeGreaterThan(0);
-    });
-
-    it('should handle escaped quotes in strings', () => {
-      const strings = tokenTexts(
-        new Code({ code: 'x = "he said \\"hello\\""', language: 'python' }),
-        'string',
-      );
-      expect(strings.length).toBeGreaterThan(0);
-    });
-  });
-
-  describe('tokenization - comments', () => {
-    it('should handle multi-line comment that closes on the same line', () => {
-      const comments = tokenTexts(
-        new Code({ code: '/* closed */ var x = 1;', language: 'javascript' }),
-        'comment',
-      );
-      expect(comments.length).toBeGreaterThan(0);
-      expect(comments[0]).toContain('/* closed */');
-    });
-
-    it('should handle multi-line comment that does not close on the line', () => {
-      const comments = tokenTexts(
-        new Code({ code: '/* unclosed comment', language: 'javascript' }),
-        'comment',
-      );
-      expect(comments.length).toBeGreaterThan(0);
-      expect(comments[0]).toContain('/* unclosed comment');
-    });
-  });
-
-  describe('tokenization - operators', () => {
-    it('should detect arrow operator ->', () => {
-      const ops = tokenTexts(new Code({ code: 'fn -> int', language: 'python' }), 'operator');
-      expect(ops).toContain('->');
-    });
-
-    it('should detect comparison operators <=, >=', () => {
-      const ops = tokenTexts(new Code({ code: 'x <= y >= z', language: 'python' }), 'operator');
-      expect(ops).toContain('<=');
-      expect(ops).toContain('>=');
-    });
-
-    it('should detect logical operators &&, ||', () => {
-      const ops = tokenTexts(new Code({ code: 'a && b || c', language: 'javascript' }), 'operator');
-      expect(ops).toContain('&&');
-      expect(ops).toContain('||');
-    });
-
-    it('should detect shift operators <<, >>', () => {
-      const ops = tokenTexts(new Code({ code: 'x << 2 >> 1', language: 'javascript' }), 'operator');
-      expect(ops).toContain('<<');
-      expect(ops).toContain('>>');
-    });
-
-    it('should detect single character operators like ~, ^, |, &', () => {
-      const ops = tokenTexts(new Code({ code: '~x ^ y | z & w', language: 'python' }), 'operator');
-      expect(ops).toContain('~');
-      expect(ops).toContain('^');
-    });
-  });
-
-  describe('tokenization - numbers', () => {
-    it('should detect scientific notation with negative exponent', () => {
-      const nums = tokenTexts(new Code({ code: 'x = 1e-5', language: 'python' }), 'number');
-      expect(nums).toContain('1e-5');
-    });
-
-    it('should detect scientific notation with positive exponent', () => {
-      const nums = tokenTexts(new Code({ code: 'x = 2.5e+10', language: 'python' }), 'number');
-      expect(nums).toContain('2.5e+10');
-    });
-  });
-
-  describe('tokenization - Rust types', () => {
-    it('should detect Rust builtin types', () => {
-      const types = tokenTexts(
-        new Code({ code: 'let x: i32 = 0;\nlet y: String = String::new();', language: 'rust' }),
-        'type',
-      );
-      expect(types).toContain('i32');
-      expect(types).toContain('String');
-    });
-  });
-
-  describe('tokenization - Go types', () => {
-    it('should detect Go builtin types', () => {
-      const types = tokenTexts(
-        new Code({ code: 'var x int = 0\nvar s string = ""', language: 'go' }),
-        'type',
-      );
-      expect(types).toContain('string');
-    });
-  });
-
-  describe('tokenization - C++ types', () => {
-    it('should detect C++ builtin types', () => {
-      const types = tokenTexts(
-        new Code({ code: 'std::vector<int> v;\nstd::string s;', language: 'cpp' }),
-        'type',
-      );
-      expect(types).toContain('vector');
-    });
-  });
-
-  describe('tokenization - Java types', () => {
-    it('should detect Java builtin types', () => {
-      const types = tokenTexts(
-        new Code({ code: 'String s = "hello";\nArrayList<Integer> list;', language: 'java' }),
-        'type',
-      );
-      expect(types).toContain('String');
-      expect(types).toContain('ArrayList');
     });
   });
 
@@ -715,17 +452,17 @@ describe('Code', () => {
       expect(c.getLineOfCode(50)!.text).toBe('line 50');
     });
 
-    it('should handle code with mixed tokens per line', () => {
+    it('should handle code with mixed tokens per line', async () => {
       const code = `def greet(name):
     # Say hello
     msg = f"Hello {name}"
     print(msg)
     return True`;
       const c = new Code({ code, language: 'python' });
+      await c.waitForRender();
       expect(c.getLineCount()).toBe(5);
-      expect(tokenTexts(c, 'keyword')).toContain('def');
+      expect(tokenTexts(c, 'function')).toContain('greet');
       expect(tokenTexts(c, 'keyword')).toContain('return');
-      expect(tokenTexts(c, 'keyword')).toContain('True');
       expect(tokenTexts(c, 'comment').length).toBeGreaterThan(0);
     });
   });
@@ -740,75 +477,25 @@ describe('Code', () => {
       expect(w2).toBeGreaterThanOrEqual(w1);
     });
 
-    it('should update line count and tokens', () => {
+    it('should update line count and tokens', async () => {
       const c = new Code({ code: 'hello', language: 'python' });
       expect(c.getLineCount()).toBe(1);
       c.setCode('def foo():\n    pass');
+      await c.waitForRender();
       expect(c.getLineCount()).toBe(2);
-      expect(tokenTexts(c, 'keyword')).toContain('def');
+      expect(tokenTexts(c, 'function')).toContain('foo');
       expect(tokenTexts(c, 'keyword')).toContain('pass');
     });
   });
 
   describe('setLanguage re-tokenization', () => {
-    it('should change tokenization results', () => {
+    it('should change tokenization results', async () => {
       const c = new Code({ code: 'fn main() { let x = 42; }', language: 'text' });
       expect(tokenTexts(c, 'keyword')).toHaveLength(0);
       c.setLanguage('rust');
+      await c.waitForRender();
       expect(tokenTexts(c, 'keyword')).toContain('fn');
-      expect(tokenTexts(c, 'keyword')).toContain('let');
-    });
-  });
-
-  describe('punctuation tokenization', () => {
-    it('should detect all standard punctuation', () => {
-      const punc = tokenTexts(new Code({ code: '(){};:,.[]', language: 'python' }), 'punctuation');
-      expect(punc).toContain('(');
-      expect(punc).toContain(')');
-      expect(punc).toContain('{');
-      expect(punc).toContain('}');
-      expect(punc).toContain(';');
-      expect(punc).toContain(':');
-      expect(punc).toContain(',');
-      expect(punc).toContain('.');
-      expect(punc).toContain('[');
-      expect(punc).toContain(']');
-    });
-  });
-
-  describe('Rust string delimiters', () => {
-    it('should handle Rust strings', () => {
-      const strings = tokenTexts(
-        new Code({ code: 'let s = "hello rust";', language: 'rust' }),
-        'string',
-      );
-      expect(strings.length).toBeGreaterThan(0);
-      expect(strings[0]).toContain('hello rust');
-    });
-
-    it('should handle Rust char literals', () => {
-      const strings = tokenTexts(new Code({ code: "let c = 'a';", language: 'rust' }), 'string');
-      expect(strings.length).toBeGreaterThan(0);
-    });
-  });
-
-  describe('Go string delimiters', () => {
-    it('should handle Go backtick raw strings', () => {
-      const strings = tokenTexts(
-        new Code({ code: 'var s = `raw string`', language: 'go' }),
-        'string',
-      );
-      expect(strings.length).toBeGreaterThan(0);
-    });
-  });
-
-  describe('JavaScript template literals', () => {
-    it('should handle backtick template strings', () => {
-      const strings = tokenTexts(
-        new Code({ code: 'const s = `hello ${name}`', language: 'javascript' }),
-        'string',
-      );
-      expect(strings.length).toBeGreaterThan(0);
+      expect(tokenTexts(c, 'number')).toContain('42');
     });
   });
 

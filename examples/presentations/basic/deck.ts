@@ -13,6 +13,7 @@ import {
 } from 'manim-web/reveal';
 import intro from './intro';
 import plainBullets from './bullets';
+import codeExample from './code';
 import { palettes } from './palettes';
 import parabola from './parabola.svg?url';
 
@@ -25,6 +26,7 @@ export const deck = presentation({
     topic('welcome', [intro, plainBullets]),
     topic('geometry', [sceneSlides('circle', () => import('./scene'))]),
     topic('text', [sceneSlides('styles', () => import('./text'))]),
+    topic('code', [codeExample]),
     topic('coordinates', [sceneSlides('point', () => import('./coordinates'))]),
     topic('matrices', [sceneSlides('product', () => import('./matrix'))]),
     topic('lesson', [

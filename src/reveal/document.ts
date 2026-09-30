@@ -113,6 +113,9 @@ export function presentationStyles(definition: PresentationDefinition): HTMLStyl
     .manim-live canvas { position:absolute; inset:0; width:100%; height:100%; }
     .manim-selection { z-index:2; pointer-events:none; }
     .manim-selection > * { pointer-events:auto; }
+    .manim-code-copy { position:absolute; top:-25px; right:0; z-index:1; padding:3px 8px; border:1px solid var(--manim-muted, #666); border-radius:4px; background:var(--manim-background, #202020); color:var(--manim-text, #fff); font:13px/18px sans-serif; cursor:pointer; user-select:none; }
+    .manim-code-source:focus-visible { outline:1px solid var(--manim-accent, #58d4e4); outline-offset:2px; }
+    .manim-code-source::selection, .manim-code-source *::selection { background:rgba(88, 212, 228, 0.35); color:transparent; }
     .manim-live + .manim-poster, .manim-slide[data-live="true"] > .manim-poster,
     .manim-slide[data-preparing="true"] > .manim-poster { visibility:hidden; }
     .manim-static-content { box-sizing:border-box; width:100%; height:100%; padding:5%; display:flex; flex-direction:column; justify-content:center; align-items:center; }
@@ -128,7 +131,7 @@ export function presentationStyles(definition: PresentationDefinition): HTMLStyl
     .manim-controls select:disabled { cursor:wait; }
     @page { size:${width}px ${height}px; margin:0; }
     @media print {
-      .reveal, .manim-staging, .manim-loading, .manim-controls { display:none !important; }
+      .reveal, .manim-staging, .manim-loading, .manim-controls, .manim-code-copy { display:none !important; }
       .manim-handout { display:block !important; }
       .manim-page { break-after:page; page-break-after:always; print-color-adjust:exact; -webkit-print-color-adjust:exact; }
       .manim-page:last-child { break-after:auto; page-break-after:auto; }

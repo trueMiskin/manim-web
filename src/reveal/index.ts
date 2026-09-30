@@ -13,6 +13,7 @@ export { slide, type DeclarativeSlideOptions, type SlideBuild } from './declarat
 export {
   paragraph,
   math,
+  code,
   bullets,
   image,
   columns,
@@ -22,6 +23,7 @@ export {
   type SlideContent,
   type ParagraphBlock,
   type MathBlock,
+  type CodeBlock,
   type BulletsBlock,
   type BulletItem,
   type ImageBlock,
@@ -54,6 +56,7 @@ export {
   SlideBullets,
   type SlideTextOptions,
   type SlideMathOptions,
+  type SlideCodeOptions,
   type SlideFigureOptions,
   type SlideFigure,
 } from './slideBlocks';

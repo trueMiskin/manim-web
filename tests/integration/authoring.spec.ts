@@ -71,7 +71,7 @@ test('the basic deck mounts, reveals named bullet items, and prepares every hand
   await expect(page.locator(currentLeaf)).toHaveAttribute('id', 'lesson--closer--minimum');
   await expect(page.locator(`${currentLeaf} .manim-selection`)).toContainText('output falls');
   await expect(page.locator(`${currentLeaf} .manim-selection`)).toContainText('output reaches');
-  await expect(page.locator('.manim-handout .manim-page')).toHaveCount(16);
+  await expect(page.locator('.manim-handout .manim-page')).toHaveCount(18);
   const minimum = await closerState('f(0)=0');
 
   await page.keyboard.press('ArrowUp');
@@ -128,7 +128,7 @@ test('the basic deck mounts, reveals named bullet items, and prepares every hand
   await page.waitForFunction(() => window.__MANIM_PRESENTATION__?.ready);
   await expect(page.locator(currentLeaf)).toHaveAttribute('id', 'lesson--graph--content');
   await expect(page.locator(`${currentLeaf} .manim-selection`)).toContainText('curve is symmetric');
-  await expect(page.locator('.manim-handout .manim-page')).toHaveCount(16);
+  await expect(page.locator('.manim-handout .manim-page')).toHaveCount(18);
   await page.keyboard.press('Shift+Space');
   await expect(page.locator(currentLeaf)).toHaveAttribute('id', 'lesson--quadratic--content');
   await expect(page.locator(`${currentLeaf} .manim-selection`)).toContainText('minimum is at zero');

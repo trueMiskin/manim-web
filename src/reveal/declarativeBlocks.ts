@@ -1,6 +1,7 @@
 import type { MathTexOptions } from '../mobjects/text/MathTex';
-import type { SlideMathOptions, SlideTextOptions } from './slideBlocks';
+import type { SlideCodeOptions, SlideMathOptions, SlideTextOptions } from './slideBlocks';
 import type { SlidePlacement } from './slideLayout';
+import { validateSlideCode } from './slideCode';
 
 /** A stable name for a block referenced by a slide's progressive builds. */
 export interface ContentBlockOptions {
@@ -17,6 +18,12 @@ export interface MathBlock extends ContentBlockOptions {
   readonly kind: 'math';
   readonly latex: MathTexOptions['latex'];
   readonly options: SlideMathOptions;
+}
+
+export interface CodeBlock extends ContentBlockOptions {
+  readonly kind: 'code';
+  readonly source: string;
+  readonly options: SlideCodeOptions;
 }
 
 export interface BulletItem extends ContentBlockOptions {
@@ -51,7 +58,7 @@ export interface SlotBlock {
   readonly content: readonly MathBlock[];
 }
 
-export type LeafBlock = ParagraphBlock | MathBlock | BulletsBlock | ImageBlock;
+export type LeafBlock = ParagraphBlock | MathBlock | CodeBlock | BulletsBlock | ImageBlock;
 export type ContentBlock = LeafBlock | ColumnsBlock | SlotBlock;
 export type SlideContent = ContentBlock | readonly ContentBlock[];
 
@@ -71,6 +78,20 @@ export function math(
 ): MathBlock {
   const { id, ...style } = options;
   return { kind: 'math', latex, id, options: style };
+}
+
+/**
+ * Describe literal code, preserving whitespace, tabs, and empty source strings.
+ * Line numbers and a copy button are enabled by default.
+ * @post result.kind === 'code' && result.source === source
+ */
+export function code(
+  source: string,
+  options: SlideCodeOptions & ContentBlockOptions = {},
+): CodeBlock {
+  validateSlideCode(source, options);
+  const { id, ...style } = options;
+  return { kind: 'code', source, id, options: style };
 }
 
 /**

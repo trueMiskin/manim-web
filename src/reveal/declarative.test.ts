@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createCanvas } from '@napi-rs/canvas';
 import { Player } from '../player/Player';
 import { slide, type SlideBuild } from './declarative';
-import { bullets, columns, math, paragraph, slot } from './declarativeBlocks';
+import { bullets, code, columns, math, paragraph, slot } from './declarativeBlocks';
 import { transformMath } from './declarativeEffects';
 import { loadScene } from './compile';
 
@@ -94,6 +94,40 @@ it('compiles static content and nested columns into repeatable named builds', as
       .map(({ text, transform, width, height }) => ({ text, transform, width, height }));
   first.seekCheckpoint('content');
   expect(geometry(second)).toEqual(geometry(first));
+});
+
+// MIGRATION: named code blocks preserve their literal source and copy options,
+// remain absent until revealed, and restore independently of checkpoint order.
+it('reveals selectable code without interpreting or losing source whitespace', async () => {
+  const source = 'int twice(int value) {\n\treturn value * 2; // $literal <tag>\n}\n';
+  const authored = slide('code', {
+    title: 'A code sample',
+    content: columns([
+      paragraph('Read the function.'),
+      code(source, { id: 'sample', language: 'cpp', fontSize: 24, tabWidth: 2 }),
+    ]),
+    builds: [{ id: 'implementation', show: ['sample'] }],
+  });
+  const definition = await loadScene(authored);
+  const instance = player();
+  await instance.sequence(definition.build);
+  instance.seekCheckpoint('content');
+  expect(instance.inspectText().some((run) => run.kind === 'code')).toBe(false);
+  instance.seekCheckpoint('implementation');
+  const completed = instance.inspectText();
+  const sample = completed.filter((run) => run.kind === 'code');
+  expect(sample).toHaveLength(1);
+  expect(sample[0]).toMatchObject({
+    source,
+    text: source,
+    code: { language: 'cpp', copyButton: true, tabWidth: 2, lineCount: 4 },
+  });
+  instance.seekCheckpoint('content');
+  instance.seekCheckpoint('implementation');
+  expect(instance.inspectText()).toEqual(completed);
+  expect(() => code(source, { fontSize: NaN })).toThrow(/positive finite/);
+  expect(() => code(source, { tabWidth: 1.5 })).toThrow(/positive integer/);
+  expect(code('').source).toBe('');
 });
 
 // MIGRATION: invalid document references fail before rendering; layout failures
