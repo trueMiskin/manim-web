@@ -1,8 +1,13 @@
 // @vitest-environment happy-dom
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { marked } from 'marked';
 import { markdownSlide } from './authoring';
 import { renderStatic } from './content';
+
+// Vitest stubs dependency CSS; browser export tests check the actual font assets.
+vi.mock('./markdownMathStyles.js', () => ({
+  getMarkdownMathStyles: () => '.katex { font-family: KaTeX_Main; }',
+}));
 
 describe('Markdown slide math', () => {
   // MIGRATION: math has identical semantic markup in screen and print output;
