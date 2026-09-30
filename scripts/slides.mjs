@@ -7,9 +7,11 @@ import { createRequire } from 'node:module';
 import { performance } from 'node:perf_hooks';
 import process from 'node:process';
 import { cp, mkdir, readFile, readdir, stat, writeFile } from 'node:fs/promises';
-import { dirname, extname, join, relative, resolve, sep } from 'node:path';
+import { dirname, extname, isAbsolute, join, posix, relative, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL, URL } from 'node:url';
 import { parseArgs } from 'node:util';
+import { buildRuntime } from './slides/runtime.mjs';
+import { sharedRuntime } from './slides/shared.mjs';
 
 const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const [command, ...args] = process.argv.slice(2);
@@ -24,8 +26,8 @@ function run(program, arguments_, options = {}) {
   });
 }
 
-function projectRequire() {
-  return createRequire(join(process.cwd(), 'package.json'));
+function projectRequire(root = process.cwd()) {
+  return createRequire(join(root, 'package.json'));
 }
 
 async function vite(arguments_) {
@@ -94,18 +96,23 @@ const mimeTypes = {
   '.mp4': 'video/mp4',
 };
 
-async function serve(directory, basePath = '/') {
-  const root = resolve(directory);
+async function serve(directory, basePath = '/', additionalMounts = []) {
+  const mounts = [{ directory, basePath }, ...additionalMounts];
   const server = createServer(async (request, response) => {
     try {
       const pathname = decodeURIComponent(new URL(request.url, 'http://localhost').pathname);
-      if (!pathname.startsWith(basePath)) throw new Error('Invalid base path');
-      const localPath = pathname.slice(basePath.length);
+      const mount = mounts.find((entry) => pathname.startsWith(decodeURIComponent(entry.basePath)));
+      if (!mount) throw new Error('Invalid base path');
+      const root = resolve(mount.directory);
+      const localPath = pathname.slice(decodeURIComponent(mount.basePath).length);
       const file = resolve(
         root,
         localPath.endsWith('/') || !localPath ? localPath + 'index.html' : localPath,
       );
-      if (relative(root, file).startsWith('..')) throw new Error('Invalid path');
+      const local = relative(root, file);
+      if (isAbsolute(local) || local === '..' || local.startsWith(`..${sep}`)) {
+        throw new Error('Invalid path');
+      }
       const body = await readFile(file);
       response.writeHead(200, {
         'Content-Type': mimeTypes[extname(file)] ?? 'application/octet-stream',
@@ -127,9 +134,15 @@ async function serve(directory, basePath = '/') {
   };
 }
 
-async function withBrowser(directory, action, basePath = '/') {
-  const { chromium } = projectRequire()('@playwright/test');
-  const server = await serve(directory, basePath);
+async function withBrowser(
+  directory,
+  action,
+  basePath = '/',
+  mounts = [],
+  require = projectRequire(),
+) {
+  const { chromium } = require('@playwright/test');
+  const server = await serve(directory, basePath, mounts);
   let browser;
   try {
     const explicitBrowser = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH;
@@ -177,10 +190,15 @@ async function build(viteArguments = []) {
       outDir: { type: 'string' },
       target: { type: 'string' },
       emptyOutDir: { type: 'boolean' },
+      runtime: { type: 'string' },
     },
   });
   if (positionals.length > 1) throw new Error('slides build accepts at most one project root.');
-  const { build: viteBuild } = await import(pathToFileURL(projectRequire().resolve('vite')).href);
+  const require = projectRequire(resolve(positionals[0] ?? '.'));
+  const shared = values.runtime
+    ? await sharedRuntime(values.runtime, { projectRequire: require })
+    : undefined;
+  const { build: viteBuild } = await import(pathToFileURL(require.resolve('vite')).href);
   let resolvedConfig;
   await viteBuild({
     ...(positionals[0] ? { root: resolve(positionals[0]) } : {}),
@@ -193,6 +211,7 @@ async function build(viteArguments = []) {
         .map((key) => [key, values[key]]),
     ),
     plugins: [
+      ...(shared ? [shared.plugin] : []),
       {
         name: 'manim-presentation-output',
         configResolved(config) {
@@ -203,9 +222,12 @@ async function build(viteArguments = []) {
   });
   const bundled = performance.now();
   const directory = resolve(resolvedConfig.root, resolvedConfig.build.outDir);
-  const basePath = resolvedConfig.base.startsWith('.')
-    ? '/'
-    : new URL(resolvedConfig.base, 'http://localhost').pathname;
+  const basePath =
+    shared?.context().basePath ??
+    (resolvedConfig.base.startsWith('.')
+      ? '/'
+      : new URL(resolvedConfig.base, 'http://localhost').pathname);
+  const mounts = shared?.context().mounts ?? [];
   await stat(join(directory, 'index.html'));
   await withBrowser(
     directory,
@@ -221,9 +243,13 @@ async function build(viteArguments = []) {
             if (run.font.url) {
               const font = new URL(run.font.url, `${url}/`);
               if (font.origin === new URL(url).origin) {
-                if (!font.pathname.startsWith(basePath))
+                if (
+                  ![basePath, ...mounts.map((mount) => mount.basePath)].some((path) =>
+                    font.pathname.startsWith(path),
+                  )
+                )
                   throw new Error(`Font is outside the built site's base path: ${font.pathname}`);
-                run.font.url = `./${font.pathname.slice(basePath.length)}${font.search}`;
+                run.font.url = `./${posix.relative(basePath, font.pathname)}${font.search}${font.hash}`;
               }
             }
           }
@@ -249,6 +275,14 @@ async function build(viteArguments = []) {
             bundleMs: bundled - started,
             preparationMs: performance.now() - bundled,
             totalMs: performance.now() - started,
+            ...(shared
+              ? {
+                  runtime: {
+                    url: shared.context().runtimeUrl,
+                    library: shared.context().manifest.library,
+                  },
+                }
+              : {}),
           },
           null,
           2,
@@ -257,12 +291,14 @@ async function build(viteArguments = []) {
       process.stdout.write(`Prepared ${checkpoints} animated handout states.\n`);
     },
     basePath,
+    mounts,
+    require,
   );
-  return { directory, basePath };
+  return { directory, basePath, mounts, require };
 }
 
 async function pdf(filename = 'presentation.pdf', viteArguments = []) {
-  const { directory, basePath } = await build(viteArguments);
+  const { directory, basePath, mounts, require } = await build(viteArguments);
   await withBrowser(
     directory,
     async (page, url) => {
@@ -272,13 +308,24 @@ async function pdf(filename = 'presentation.pdf', viteArguments = []) {
       process.stdout.write(`Wrote ${resolve(filename)}\n`);
     },
     basePath,
+    mounts,
+    require,
   );
+}
+
+async function runtime(arguments_) {
+  const { values } = parseArgs({ args: arguments_, options: { outDir: { type: 'string' } } });
+  if (!values.outDir)
+    throw new Error('slides runtime requires --outDir (for example ../site/runtime/v1).');
+  await buildRuntime({ outDir: values.outDir, projectRequire: projectRequire() });
+  process.stdout.write(`Created shared runtime in ${resolve(values.outDir)}\n`);
 }
 
 try {
   if (command === 'init') await init(args[0]);
   else if (command === 'dev') await vite(args);
   else if (command === 'build') await build(args);
+  else if (command === 'runtime') await runtime(args);
   else if (command === 'pdf')
     await pdf(
       args[0]?.startsWith('-') ? undefined : args[0],
@@ -286,7 +333,7 @@ try {
     );
   else
     process.stdout.write(
-      'Usage: slides init [directory] | dev [vite options] | build [root] [--config file] [--mode mode] [--base path] [--outDir directory] | pdf [filename] [build options]\n',
+      'Usage: slides init [directory] | dev [vite options] | runtime --outDir directory | build [root] [--config file] [--mode mode] [--base path] [--outDir directory] [--runtime directory] | pdf [filename] [build options]\n',
     );
 } catch (error) {
   process.stderr.write(`${error.message}\n`);
