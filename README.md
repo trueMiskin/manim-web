@@ -27,23 +27,18 @@ The power of [3Blue1Brown's Manim](https://github.com/3b1b/manim) — in the bro
 <h1>Manim-web demo</h1>
 <div id="container"></div>
 <script type="module">
-    import {
-        Scene,
-        Circle,
-        Create,
-    } from "https://cdn.jsdelivr.net/npm/manim-web@latest/dist/manim-web.browser.js";
+  import {
+    Scene,
+    Circle,
+    Create,
+  } from 'https://cdn.jsdelivr.net/npm/manim-web@latest/dist/manim-web.browser.js';
 
-    const options = { width: 500, height: 300 };
-    const scene = new Scene(
-        document.getElementById("container"),
-        options,
-    );
-    const circle = new Circle({ radius: 1.5 });
-    await scene.play(new Create(circle));
+  const options = { width: 500, height: 300 };
+  const scene = new Scene(document.getElementById('container'), options);
+  const circle = new Circle({ radius: 1.5 });
+  await scene.play(new Create(circle));
 </script>
 ```
-
-
 
 ### Locally
 
@@ -158,6 +153,20 @@ cd manim-web
 npm install
 npm run dev
 ```
+
+To remove generated build output and caches from this checkout:
+
+```sh
+npm run clean -- --dry-run # Preview the files and directories to remove
+npm run clean             # Remove the listed generated output
+```
+
+This cleans the library and presentation `dist/` directories, presentation PDFs,
+documentation builds, test reports, coverage, and selected caches. It uses Git to
+remove only ignored output at those known locations. Tracked files, installed
+dependencies, virtual environments, `.env` files, editor settings, and local notes
+are preserved. Packed `.tgz` files and shared runtimes outside these output
+directories are also preserved.
 
 ## License
 
