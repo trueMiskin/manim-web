@@ -1,6 +1,6 @@
 import { Marked, type TokenizerAndRendererExtension } from 'marked';
 import katex from 'katex';
-import katexCss from 'katex/dist/katex.min.css?inline';
+import { getMarkdownMathStyles } from './markdownMathStyles.js';
 
 interface MathToken {
   type: string;
@@ -85,7 +85,8 @@ export function renderMarkdown(source: string): string {
 
 /** The bundled stylesheet contains local font assets; no CDN request is required. */
 function ensureMarkdownMathStyles(): void {
-  if (document.getElementById('manim-markdown-math-styles')) return;
+  const katexCss = getMarkdownMathStyles();
+  if (!katexCss || document.getElementById('manim-markdown-math-styles')) return;
   const style = document.createElement('style');
   style.id = 'manim-markdown-math-styles';
   style.textContent = katexCss;

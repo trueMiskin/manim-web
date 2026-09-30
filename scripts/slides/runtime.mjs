@@ -15,6 +15,7 @@ const moduleNames = {
 };
 const virtualPrefix = '\0manim-runtime:';
 const setupModule = '\0manim-runtime-setup';
+const katexStylesModule = '\0manim-runtime-katex-styles';
 
 async function filesIn(directory, prefix = '') {
   const files = [];
@@ -122,12 +123,21 @@ function runtimeEntries(packageRoot, packages) {
 }
 
 function entryPlugin(entries, modules) {
+  const fallbackStyles = join(dirname(entries.reveal), 'markdownMathStyles.js');
   return {
     name: 'manim-shared-runtime',
-    resolveId(id) {
+    enforce: 'pre',
+    resolveId(id, importer) {
+      if (
+        id === fallbackStyles ||
+        (importer && id.startsWith('.') && resolve(dirname(importer), id) === fallbackStyles)
+      )
+        return katexStylesModule;
       if (id === setupModule || id.startsWith(virtualPrefix)) return id;
     },
     load(id) {
+      // Presentation HTML links the shared stylesheet copied by copyStyles().
+      if (id === katexStylesModule) return 'export function getMarkdownMathStyles() { return ""; }';
       if (id === setupModule) {
         return (
           `import { setKatexStylesheetUrl } from ${JSON.stringify(entries.core)};\n` +

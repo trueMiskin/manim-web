@@ -17,6 +17,8 @@ export default defineConfig({
       entry: {
         index: resolve(__dirname, 'src/index.ts'),
         'reveal/index': resolve(__dirname, 'src/reveal/index.ts'),
+        // Preserve the fallback boundary so shared runtimes can omit embedded fonts.
+        'reveal/markdownMathStyles': resolve(__dirname, 'src/reveal/markdownMathStyles.ts'),
         'integrations/react': resolve(__dirname, 'src/integrations/react.tsx'),
         'integrations/vue': resolve(__dirname, 'src/integrations/vue.ts'),
         'integrations/webcomponent': resolve(__dirname, 'src/integrations/webcomponent.ts'),
@@ -31,7 +33,14 @@ export default defineConfig({
       // esm.sh) duplicate the `mathjax` singleton and breaks MathTex (#396).
       // `./mobjects/text/MathJaxBundle.ts` concentrates the imports so Vite
       // emits a single MathJax chunk.
-      external: ['three', 'react', 'react/jsx-runtime', 'vue'],
+      external: [
+        'three',
+        'react',
+        'react/jsx-runtime',
+        'vue',
+        // Keep imports pointed at the private entry rather than a merged CSS chunk.
+        './markdownMathStyles.js',
+      ],
       output: {
         globals: {
           three: 'THREE',

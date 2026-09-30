@@ -81,6 +81,24 @@ async function scriptBytes(directory) {
   return sizes.reduce((total, size) => total + size, 0);
 }
 
+async function assertExternalRuntimeFonts() {
+  const entries = await readdir(runtime, { recursive: true, withFileTypes: true });
+  const embeddedAssets = new Set();
+  for (const entry of entries) {
+    if (!entry.isFile() || !entry.name.endsWith('.js')) continue;
+    const source = await readFile(join(entry.parentPath, entry.name), 'utf8');
+    for (const match of source.matchAll(/data:[^,"'\s]+;base64,([A-Za-z\d+/=]+)/g))
+      embeddedAssets.add(match[1]);
+  }
+  const fonts = join(runtime, 'assets/fonts');
+  for (const filename of await readdir(fonts)) {
+    assert.ok(
+      !embeddedAssets.has(await readFile(join(fonts, filename), 'base64')),
+      `KaTeX font duplicated in runtime JavaScript: ${filename}`,
+    );
+  }
+}
+
 // MIGRATION: the selected project's installed library must match the pinned
 // runtime byte-for-byte, even when both packages report the same version.
 async function rejectDifferentInstallation() {
@@ -151,6 +169,28 @@ async function startServer(failures) {
   return server;
 }
 
+async function inspectMarkdownMath(page, selector) {
+  const content = page.locator(selector);
+  assert.equal(await content.isVisible(), true);
+  const styles = await content.evaluate(async (element) => {
+    await globalThis.document.fonts.ready;
+    return {
+      formulas: element.querySelectorAll('.katex').length,
+      mathFont: globalThis.getComputedStyle(element.querySelector('.katex .mathnormal')).fontFamily,
+      display: globalThis.getComputedStyle(element.querySelector('.katex-display')).display,
+      mathmlWidth: element.querySelector('.katex-mathml').getBoundingClientRect().width,
+      loaded: [...globalThis.document.fonts].some(
+        (font) => font.family.includes('KaTeX_Math') && font.status === 'loaded',
+      ),
+    };
+  });
+  assert.equal(styles.formulas, 2);
+  assert.match(styles.mathFont, /KaTeX_Math/);
+  assert.equal(styles.display, 'block');
+  assert.ok(styles.mathmlWidth <= 1, 'The accessible MathML must be visually clipped.');
+  assert.equal(styles.loaded, true, 'Markdown math must load its KaTeX font.');
+}
+
 async function inspectDeck(browser, url, title, shared) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   const errors = [];
@@ -204,7 +244,7 @@ async function inspectDeck(browser, url, title, shared) {
     assert.equal(state.ready, true);
     assert.equal(state.error, undefined);
     assert.equal(state.title, title);
-    assert.equal(state.routes, 3);
+    assert.equal(state.routes, 4);
     assert.equal(state.pages, state.routes);
     assert.ok(state.text.includes(title));
     assert.ok(state.resources.length > 0);
@@ -214,18 +254,26 @@ async function inspectDeck(browser, url, title, shared) {
     );
 
     await page.keyboard.press('ArrowRight');
+    await page.waitForFunction(() => globalThis.location.hash.includes('markdown--math'));
+    await inspectMarkdownMath(page, '#markdown--math');
+    assert.equal(await page.locator('#manim-markdown-math-styles').count(), shared ? 0 : 1);
+    await page.keyboard.press('ArrowRight');
     await page.waitForFunction(() => globalThis.location.hash.includes('geometry--circle--draw'));
     await page.keyboard.press('ArrowDown');
     await page.waitForFunction(() => globalThis.location.hash.includes('geometry--circle--move'));
     await page.waitForFunction(() => !globalThis.__MANIM_PRESENTATION__.player.isPlaying);
     await page.emulateMedia({ media: 'print' });
     assert.equal(await page.locator('.manim-handout').isVisible(), true);
+    await inspectMarkdownMath(page, '.manim-page[data-manim-id="markdown/math"]');
     const sharedRequests = requests.filter((request) => request.includes('/course/runtime/v1/'));
     assert.equal(sharedRequests.length > 0, shared);
     if (shared) {
       assert.ok(sharedRequests.some((request) => request.endsWith('.woff2')));
       assert.ok(sharedRequests.some((request) => request.endsWith('.css')));
       assert.ok(sharedRequests.some((request) => request.endsWith('.js')));
+      assert.ok(
+        sharedRequests.some((request) => request.endsWith('/assets/fonts/KaTeX_Math-Italic.woff2')),
+      );
     }
     assert.deepEqual(errors, []);
   } finally {
@@ -235,7 +283,8 @@ async function inspectDeck(browser, url, title, shared) {
 
 // MIGRATION: adding any independent presentation preserves every existing deck
 // and pinned runtime byte, and all decks retain working navigation and handouts
-// when the complete site is moved to a different URL prefix.
+// when the complete site is moved to a different URL prefix. Markdown math uses
+// local fonts in screen and print output without duplicating fonts in runtime JS.
 let server;
 let browser;
 try {
@@ -245,6 +294,7 @@ try {
   await mkdir(site, { recursive: true });
   process.stdout.write('Building one shared runtime and the first presentation.\n');
   await run(['runtime', '--outDir', runtime]);
+  await assertExternalRuntimeFonts();
   await run([
     'build',
     '--runtime',
@@ -327,7 +377,7 @@ try {
   await inspectDeck(browser, `${origin}/course/standalone/`, 'Second independent deck', false);
   assert.deepEqual(failures, []);
   process.stdout.write(
-    'Verified immutable runtime and existing deck, independent exports, shared fonts, handouts, navigation, PDF, and standalone builds.\n',
+    'Verified immutable runtime and existing deck, independent exports, shared fonts, styled Markdown math, handouts, navigation, PDF, and standalone builds.\n',
   );
 } finally {
   await browser?.close();
