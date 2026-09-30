@@ -7,7 +7,9 @@ import {
   presentation,
   sceneSlides,
   slide,
+  slot,
   topic,
+  transformMath,
 } from 'manim-web/reveal';
 import intro from './intro';
 import plainBullets from './bullets';
@@ -60,7 +62,32 @@ export const deck = presentation({
         title: 'Move closer to the minimum',
         content: [
           paragraph('Start at two, then move toward zero one step at a time.'),
-          math('f(2)=4'),
+          slot([
+            math(
+              [
+                { key: 'input', latex: 'f(2)' },
+                '=',
+                { key: 'output', latex: '4', color: 'accent' },
+              ],
+              { id: 'at-two' },
+            ),
+            math(
+              [
+                { key: 'input', latex: 'f(1)' },
+                '=',
+                { key: 'output', latex: '1', color: 'accent' },
+              ],
+              { id: 'at-one' },
+            ),
+            math(
+              [
+                { key: 'input', latex: 'f(0)' },
+                '=',
+                { key: 'output', latex: '0', color: 'accent' },
+              ],
+              { id: 'at-zero' },
+            ),
+          ]),
           bullets([
             { id: 'closer', text: 'At $x=1$, the output falls to $f(1)=1$.' },
             { id: 'minimum', text: 'At $x=0$, the output reaches its minimum: $f(0)=0$.' },
@@ -71,11 +98,13 @@ export const deck = presentation({
           {
             id: 'first-step',
             show: ['closer'],
+            effects: [transformMath('at-two', 'at-one', { duration: 0.8 })],
             notes: 'Moving from two to one brings both the input and its square closer to zero.',
           },
           {
             id: 'minimum',
             show: ['minimum'],
+            effects: [transformMath('at-one', 'at-zero', { duration: 0.8 })],
             notes: 'At zero, the square reaches its smallest possible value.',
           },
         ],

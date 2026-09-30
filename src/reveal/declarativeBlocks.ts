@@ -46,8 +46,13 @@ export interface ColumnsBlock {
   readonly widths: readonly number[];
 }
 
+export interface SlotBlock {
+  readonly kind: 'slot';
+  readonly content: readonly MathBlock[];
+}
+
 export type LeafBlock = ParagraphBlock | MathBlock | BulletsBlock | ImageBlock;
-export type ContentBlock = LeafBlock | ColumnsBlock;
+export type ContentBlock = LeafBlock | ColumnsBlock | SlotBlock;
 export type SlideContent = ContentBlock | readonly ContentBlock[];
 
 /** Describe wrapping prose, with optional $inline math$, without creating a scene. */
@@ -66,6 +71,19 @@ export function math(
 ): MathBlock {
   const { id, ...style } = options;
   return { kind: 'math', latex, id, options: style };
+}
+
+/**
+ * Reserve one area for named formula alternatives; the first is visible initially.
+ * A build can defer the first formula with show, or replace it with transformMath.
+ * @pre content.length >= 2
+ * @pre content.every(block => block.kind === 'math' && block.id !== undefined)
+ * @post result.kind === 'slot' && result.content.length === content.length
+ */
+export function slot(content: readonly MathBlock[]): SlotBlock {
+  if (content.length < 2 || content.some((block) => block.kind !== 'math' || !block.id))
+    throw new Error('A slot needs at least two math blocks, each with an ID.');
+  return { kind: 'slot', content: [...content] };
 }
 
 /** Describe a wrapping list; name the entire list or individual rows for builds. */

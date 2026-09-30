@@ -16,6 +16,7 @@ export {
   bullets,
   image,
   columns,
+  slot,
   type ContentBlock,
   type ContentBlockOptions,
   type SlideContent,
@@ -26,7 +27,14 @@ export {
   type ImageBlock,
   type ImageBlockOptions,
   type ColumnsBlock,
+  type SlotBlock,
 } from './declarativeBlocks';
+export {
+  transformMath,
+  type SlideEffect,
+  type TransformMathEffect,
+  type TransformMathOptions,
+} from './declarativeEffects';
 export { ManimPresentation, manimPresentation } from './ManimPresentation';
 export {
   mountPresentation,

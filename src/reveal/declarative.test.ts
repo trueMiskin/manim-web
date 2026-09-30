@@ -2,8 +2,9 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createCanvas } from '@napi-rs/canvas';
 import { Player } from '../player/Player';
-import { slide } from './declarative';
-import { bullets, columns, math, paragraph } from './declarativeBlocks';
+import { slide, type SlideBuild } from './declarative';
+import { bullets, columns, math, paragraph, slot } from './declarativeBlocks';
+import { transformMath } from './declarativeEffects';
 import { loadScene } from './compile';
 
 const players: Player[] = [];
@@ -113,4 +114,124 @@ it('rejects unknown build targets and reports the slide that overflows', async (
   });
   const definition = await loadScene(authored);
   await expect(player().sequence(definition.build)).rejects.toThrow(/Slide "too-large".*width/);
+});
+
+// MIGRATION: a chain of transforms shows exactly one formula per slot at each
+// pause, preserves surrounding layout, and restores geometry for any seek order
+// or independent build, including seeks from partially completed transforms.
+it('morphs named formula parts in a stable slot and replays each build', async () => {
+  const authored = slide('morph', {
+    title: 'Evolving formula',
+    theme: { duration: 0.2 },
+    content: [
+      columns([
+        slot([
+          math(
+            [
+              { key: 'left', latex: 'x' },
+              { key: 'right', latex: '+x' },
+            ],
+            { id: 'original' },
+          ),
+          math(
+            [
+              { key: 'left', latex: '\\frac{x}{2}' },
+              { key: 'right', latex: '+x' },
+            ],
+            { id: 'fraction' },
+          ),
+          math([{ key: 'left', latex: '\\frac{x}{2}' }, { key: 'right', latex: '+x' }, '+1'], {
+            id: 'expanded',
+          }),
+        ]),
+        paragraph('A new term appears.', { id: 'explanation' }),
+      ]),
+      paragraph('Stable footer.'),
+    ],
+    builds: [
+      { id: 'halve', effects: [transformMath('original', 'fraction')] },
+      {
+        id: 'add',
+        show: ['explanation'],
+        effects: [transformMath('fraction', 'expanded', { duration: 0.3 })],
+      },
+    ],
+  });
+  const definition = await loadScene(authored);
+  const first = player();
+  await first.sequence(definition.build);
+  const geometry = (instance: Player) =>
+    instance.inspectText().map(({ source, text, transform, width, height }) => ({
+      source,
+      text,
+      transform,
+      width,
+      height,
+    }));
+  const formula = () => first.inspectText().filter((run) => run.kind === 'math');
+  const snapshots = new Map<string, ReturnType<typeof geometry>>();
+  for (const [checkpoint, latex] of [
+    ['content', 'x+x'],
+    ['halve', '\\frac{x}{2}+x'],
+    ['add', '\\frac{x}{2}+x+1'],
+  ]) {
+    first.seekCheckpoint(checkpoint);
+    expect(
+      formula()
+        .map((run) => run.text)
+        .join(''),
+    ).toBe(latex);
+    expect(new Set(formula().map((run) => run.mobjectId)).size).toBe(1);
+    snapshots.set(checkpoint, geometry(first));
+  }
+  expect(first.checkpoints[1].endTime - first.checkpoints[1].startTime).toBeCloseTo(0.2);
+  expect(first.checkpoints[2].endTime - first.checkpoints[2].startTime).toBeCloseTo(0.3);
+  const footer = (snapshot: ReturnType<typeof geometry>) =>
+    snapshot.filter((run) => run.source === 'Stable footer.');
+  expect(footer(snapshots.get('add')!)).toEqual(footer(snapshots.get('content')!));
+  expect(footer(snapshots.get('halve')!)).toEqual(footer(snapshots.get('content')!));
+  for (const checkpoint of ['halve', 'content', 'add', 'content', 'halve']) {
+    first.seek(0.1);
+    expect(
+      formula()
+        .map((run) => run.text)
+        .join(''),
+    ).not.toContain('\\frac');
+    first.seek(0.35);
+    first.seekCheckpoint(checkpoint);
+    expect(geometry(first)).toEqual(snapshots.get(checkpoint));
+  }
+  const second = player();
+  await second.sequence(definition.build);
+  for (const checkpoint of ['content', 'add']) {
+    second.seekCheckpoint(checkpoint);
+    expect(geometry(second)).toEqual(snapshots.get(checkpoint));
+  }
+  expect(geometry(first)).toEqual(snapshots.get('halve'));
+});
+
+// MIGRATION: an invalid effect graph fails before rendering: each transform
+// has a visible math source, a fresh math target, and exclusive use of both IDs.
+it('rejects invalid formula references, conflicting builds, and consumed targets', () => {
+  const content = [
+    slot([math('x', { id: 'a' }), math('y', { id: 'b' }), math('z', { id: 'c' })]),
+    paragraph('Explanation', { id: 'prose' }),
+  ];
+  const invalid = (builds: SlideBuild[]) => () =>
+    slide('invalid', { title: 'Invalid', content, builds });
+  expect(invalid([{ id: 'next', effects: [transformMath('a', 'prose')] }])).toThrow(
+    /invalid\/next.*math/,
+  );
+  expect(
+    invalid([{ id: 'next', effects: [transformMath('a', 'b'), transformMath('b', 'c')] }]),
+  ).toThrow(/same build/);
+  expect(invalid([{ id: 'next', effects: [transformMath('b', 'c')] }])).toThrow(/visible/);
+  expect(
+    invalid([
+      { id: 'next', effects: [transformMath('a', 'b')] },
+      { id: 'back', effects: [transformMath('b', 'a')] },
+    ]),
+  ).toThrow(/fresh ID/);
+  expect(invalid([{ id: 'overlap', show: ['b'] }])).toThrow(/visible together/);
+  expect(() => transformMath('a', 'b', { duration: NaN })).toThrow(/positive finite/);
 });
