@@ -64,6 +64,47 @@ The shared configuration supplies source aliases and the Typia build plugin, so 
 
 `slides build` runs Vite, visits the built deck in Chromium, captures all authored checkpoint states, and packages content-addressed images plus `manim-handout.json` in `dist/`. Serve that directory as a static site. The browser eagerly prepares those print assets, while live scene modules load on navigation. `slides pdf` exports the same flat handout through Chromium. Ordinary viewing and authoring need JavaScript only; Python and a rendering server are not required.
 
+To **share one runtime between presentations**, use the bundled [basic](basic/) and [lesson](lesson/) examples. Build and pack this checkout as shown above, then run the following from the repository root. This copies both examples into a fresh temporary directory and installs the same compiled library in each copy; use the tarball filename printed by `npm pack`:
+
+```sh
+demoDir=$(mktemp -d)
+cp -R examples/presentations/basic "$demoDir/basic"
+cp -R examples/presentations/lesson "$demoDir/lesson"
+
+# Create the runtime once, then export the basic example.
+cd "$demoDir/basic"
+npm install /tmp/manim-web-0.3.24.tgz
+npx slides runtime --outDir ../site/runtime/v1
+npm run build -- --runtime ../site/runtime/v1 --outDir ../site/basic --emptyOutDir
+
+# Add the lesson example without rebuilding basic or the runtime.
+cd "$demoDir/lesson"
+npm install /tmp/manim-web-0.3.24.tgz
+npm run build -- --runtime ../site/runtime/v1 --outDir ../site/lesson --emptyOutDir
+```
+
+Both examples already define `"build": "slides build"` in their [basic/package.json](basic/package.json) and [lesson/package.json](lesson/package.json); `--` forwards the extra arguments to that script. Use each example's own Vite configuration with the compiled package for this workflow. The shared-runtime build does not use the repository's live-source aliases. Chromium or an installed Chrome is required for capture, as with ordinary `slides build`.
+
+The shared directory contains the library and its runtime dependencies. Each deck output contains its own content, media, and generated handout assets. The default runtime URL is relative to the deck's actual output directory. With the starter's `base: './'`, deploy the whole `site/` directory under any website prefix while preserving this layout:
+
+```text
+site/
+  runtime/v1/ # Shared runtime, built once
+  basic/      # Basic example and its handouts
+  lesson/     # Lesson example and its handouts
+```
+
+From the copied `lesson/` directory, run `python3 -m http.server 8000 --directory ../site`, then open `http://localhost:8000/basic/` or `http://localhost:8000/lesson/`. For offline viewing, copy the whole `site/` directory and serve it the same way. A deck folder alone requires its referenced runtime to remain available. PDF export accepts the same options and rebuilds the selected deck before printing:
+
+```sh
+# In the copied lesson/ directory, after stopping the HTTP server:
+npx slides pdf lesson.pdf --runtime ../site/runtime/v1 --outDir ../site/lesson --emptyOutDir
+```
+
+Edit the copied example's content, preview with `npm run dev`, then repeat its `npm run build -- --runtime ...` command to refresh its content and handouts. For example, changing `lesson/gradient.ts` and rebuilding `lesson` updates only `site/lesson/`; `site/basic/` and `site/runtime/v1/` remain unchanged. Add another presentation by installing the same library build and exporting it into another sibling directory with the same `--runtime` path; no source import changes are needed.
+
+Runtime directories are immutable: `slides runtime` refuses to overwrite a populated output directory. Its manifest checks the compiled library's identity and the installed versions of Three.js, KaTeX, and Reveal.js, so two different builds labelled with the same version are not interchangeable. To upgrade the library, create a new directory such as `runtime/v2` from the new installed package, then build the presentations you want to upgrade against it. Keep `runtime/v1` available for existing exports that still reference it.
+
 Topic sections are horizontal Reveal stacks. Their direct children are real vertical slides, one for each scene `step`. Left/right changes topic, up/down changes checkpoint, and Space/Shift+Space traverses the deck. Forward navigation plays an interval; backward navigation, an initial deep link, and overview selection restore its completed state. P pauses/resumes and R replays the active interval without changing the route. Reveal owns keyboard handling, including editable content and browser shortcuts.
 
 Every meaningful pause prints by default. Set `handout: 'final'` for the last checkpoint in each scene, or an array of `topic/scene/checkpoint` IDs. Static slides print once; video uses its poster; audio/custom HTML can provide `printContent`. Backgrounds remain visible in the flat handout. Cmd/Ctrl+P, browser-menu Print, and the shared Print button use the same prepared pages. `?manim-print=1` and Reveal's `?print-pdf` workflow open that same handout directly. All captured fonts load before readiness, including those on unvisited slides. Wait until the preparing screen disappears before printing; native browser print cannot wait for an unfinished initial load.

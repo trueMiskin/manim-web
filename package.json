@@ -38,6 +38,8 @@
   "files": [
     "dist",
     "scripts/slides.mjs",
+    "scripts/slides/runtime.mjs",
+    "scripts/slides/shared.mjs",
     "examples/presentations/basic"
   ],
   "scripts": {
@@ -69,7 +71,8 @@
     "typecheck:presentations": "tsc -p tsconfig.presentations.json --noEmit",
     "test:presentations": "playwright test -c playwright.presentations.config.ts",
     "test:authoring": "playwright test -c playwright.authoring.config.ts",
-    "test:tech-demo": "node scripts/qualify-tech-demo.mjs && node scripts/test-presentation-cache.mjs"
+    "test:tech-demo": "node scripts/qualify-tech-demo.mjs && node scripts/test-presentation-cache.mjs",
+    "test:shared-runtime": "node --test scripts/slides/runtime-identity.test.mjs && node scripts/test-shared-runtime.mjs"
   },
   "lint-staged": {
     "*.{ts,tsx}": [
