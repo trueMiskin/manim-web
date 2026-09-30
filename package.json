@@ -53,6 +53,7 @@
     "examples/presentations/basic"
   ],
   "scripts": {
+    "clean": "node scripts/clean.mjs",
     "dev": "vite",
     "build": "tsc && vite build && vite build --config vite.browser.config.ts",
     "build:browser": "vite build --config vite.browser.config.ts",
@@ -83,7 +84,8 @@
     "test:presentations": "playwright test -c playwright.presentations.config.ts",
     "test:authoring": "playwright test -c playwright.authoring.config.ts",
     "test:tech-demo": "node scripts/qualify-tech-demo.mjs && node scripts/test-presentation-cache.mjs",
-    "test:shared-runtime": "node --test scripts/slides/runtime-identity.test.mjs && node scripts/test-shared-runtime.mjs"
+    "test:shared-runtime": "node --test scripts/slides/runtime-identity.test.mjs && node scripts/test-shared-runtime.mjs",
+    "test:clean": "node --test scripts/clean.test.mjs"
   },
   "lint-staged": {
     "*.{ts,tsx}": [

@@ -220,6 +220,20 @@ npm install
 npm run dev
 ```
 
+To remove generated build output and caches from this checkout:
+
+```sh
+npm run clean -- --dry-run # Preview the files and directories to remove
+npm run clean             # Remove the listed generated output
+```
+
+This cleans the library and presentation `dist/` directories, presentation PDFs,
+documentation builds, test reports, coverage, and selected caches. It uses Git to
+remove only ignored output at those known locations. Tracked files, installed
+dependencies, virtual environments, `.env` files, editor settings, and local notes
+are preserved. Packed `.tgz` files and shared runtimes outside these output
+directories are also preserved.
+
 ## How it was built
 
 The port was written with coding agents. The story, with numbers from the git history: [Porting Manim to TypeScript with Coding Agents](https://maloyan.xyz/blog/porting-manim-to-typescript-with-agents).
