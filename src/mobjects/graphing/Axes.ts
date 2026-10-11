@@ -4,11 +4,20 @@ import { VMobject } from '../../core/VMobject';
 import { VGroup } from '../../core/VGroup';
 import { VDict } from '../../core/VDict';
 import { NumberLine, NumberLineOptions } from './NumberLine';
+import { CoordinateSystem } from './CoordinateSystem';
 import { FunctionGraph, FunctionGraphOptions } from './FunctionGraph';
 import { MathTexImage } from '../../mobjects/text/MathTexImage';
 import { Line } from '../../mobjects/geometry/Line';
 import { DashedLine } from '../../mobjects/geometry/DashedLine';
 import { Dot } from '../../mobjects/geometry/Dot';
+import {
+  slopeOfTangent,
+  angleOfTangent,
+  getVerticalLinesToGraph,
+  getSecantSlopeGroup,
+  type VerticalLinesToGraphOptions,
+  type SecantSlopeGroupOptions,
+} from './axes-calculus';
 
 /**
  * Options for creating Axes
@@ -36,6 +45,16 @@ export interface AxesOptions {
   tipLength?: number;
 }
 
+/** Styling options for the reference lines drawn to a point (vertical/horizontal). */
+interface AxisLineOptions {
+  /** Stroke color. Default: '#ffffff' */
+  color?: string;
+  /** Stroke width in pixels. Default: 2 */
+  strokeWidth?: number;
+  /** Line constructor to use. Default: DashedLine */
+  lineFunc?: typeof Line | typeof DashedLine;
+}
+
 /**
  * Axes - A coordinate system with x and y axes
  *
@@ -59,7 +78,7 @@ export interface AxesOptions {
  * const point = axes.coordsToPoint(3, 2);
  * ```
  */
-export class Axes extends Group {
+export class Axes extends Group implements CoordinateSystem {
   /** The x-axis NumberLine */
   xAxis: NumberLine;
   /** The y-axis NumberLine */
@@ -73,6 +92,8 @@ export class Axes extends Group {
   protected _tipLength: number;
   protected _xTip: VMobject | null = null;
   protected _yTip: VMobject | null = null;
+  /** Tick-number labels added by addCoordinates (empty until it is called). */
+  protected _coordinateNumberLabels: Mobject[] = [];
 
   constructor(options: AxesOptions = {}) {
     super();
@@ -261,11 +282,15 @@ export class Axes extends Group {
     const xNorm = xMax !== xMin ? (x - xMin) / (xMax - xMin) : 0.5;
     const yNorm = yMax !== yMin ? (y - yMin) / (yMax - yMin) : 0.5;
 
-    // Convert to visual coordinates (centered at origin)
+    // Convert to visual coordinates (centered at origin), then apply this
+    // Axes' full transform (position, rotation, scale, and any ancestors') —
+    // a plain position offset ignores rotation/scale applied via animations
+    // like Rotate, so a transformed Axes would map coordinates as if it were
+    // still in its original orientation (#534).
     const visualX = (xNorm - 0.5) * this._xLength;
     const visualY = (yNorm - 0.5) * this._yLength;
 
-    return [visualX + this.position.x, visualY + this.position.y, this.position.z];
+    return this._localToWorld([visualX, visualY, 0]);
   }
 
   /**
@@ -277,9 +302,9 @@ export class Axes extends Group {
     const [xMin, xMax] = this._xRange;
     const [yMin, yMax] = this._yRange;
 
-    // Get local coordinates
-    const localX = point[0] - this.position.x;
-    const localY = point[1] - this.position.y;
+    // Inverse of coordsToPoint's full transform (position, rotation, scale,
+    // ancestors) — see #534.
+    const [localX, localY] = this._worldToLocal(point);
 
     // Convert from visual to normalized (0 to 1)
     const xNorm = localX / this._xLength + 0.5;
@@ -492,14 +517,7 @@ export class Axes extends Group {
    * @param options - Line options
    * @returns A Line from the x-axis to the point
    */
-  getVerticalLine(
-    point: Vector3Tuple,
-    options: {
-      color?: string;
-      strokeWidth?: number;
-      lineFunc?: typeof Line | typeof DashedLine;
-    } = {},
-  ): VMobject {
+  getVerticalLine(point: Vector3Tuple, options: AxisLineOptions = {}): VMobject {
     const { color = '#ffffff', strokeWidth = 2, lineFunc = DashedLine } = options;
     const xAxisY = this.coordsToPoint(0, 0)[1];
     return new lineFunc({
@@ -508,6 +526,114 @@ export class Axes extends Group {
       color,
       strokeWidth,
     });
+  }
+
+  /**
+   * Create a horizontal line from the y-axis across to a point.
+   * Mirrors getVerticalLine. Matches Python Manim's get_horizontal_line().
+   * @param point - The target point [x, y, z] in visual coordinates
+   * @param options - Line options
+   * @returns A Line from the y-axis to the point
+   */
+  getHorizontalLine(point: Vector3Tuple, options: AxisLineOptions = {}): VMobject {
+    const { color = '#ffffff', strokeWidth = 2, lineFunc = DashedLine } = options;
+    const yAxisX = this.coordsToPoint(0, 0)[0];
+    return new lineFunc({
+      start: [yAxisX, point[1], point[2]] as Vector3Tuple,
+      end: [point[0], point[1], point[2]] as Vector3Tuple,
+      color,
+      strokeWidth,
+    });
+  }
+
+  /**
+   * Get both reference lines (vertical and horizontal) from the axes to a point.
+   * Matches Python Manim's get_lines_to_point().
+   * @param point - The target point [x, y, z] in visual coordinates
+   * @param options - Line options applied to both lines
+   * @returns A VGroup with the vertical line (child 0) and horizontal line (child 1)
+   */
+  getLinesToPoint(point: Vector3Tuple, options: AxisLineOptions = {}): VGroup {
+    const group = new VGroup();
+    group.add(this.getVerticalLine(point, options));
+    group.add(this.getHorizontalLine(point, options));
+    return group;
+  }
+
+  /**
+   * Add tick-number labels to both axes (Python Manim's add_coordinates()).
+   *
+   * The labels are added as submobjects of the Axes in its local frame, so they
+   * follow any transform applied to the Axes. The origin (0) is always excluded,
+   * matching the axes' default numbersToExclude. Chainable.
+   *
+   * @param xValues - X values to label. Default: every x-axis step value.
+   * @param yValues - Y values to label. Default: every y-axis step value.
+   * @returns this, for chaining
+   */
+  addCoordinates(xValues?: number[], yValues?: number[]): this {
+    const xs = xValues ?? this._axisDefaultNumbers(this._xRange);
+    const ys = yValues ?? this._axisDefaultNumbers(this._yRange);
+
+    const xAxisLocalY = this._numberToVisualY(0);
+    const yAxisLocalX = this._numberToVisualX(0);
+    const xBelow = this.xAxis.getTickSize() + 0.35;
+
+    for (const x of xs) {
+      if (x === 0) continue;
+      const label = this._makeNumberLabel(x, this.xAxis.color);
+      label.position.set(this._numberToVisualX(x), xAxisLocalY - xBelow, 0);
+      this.add(label);
+      this._coordinateNumberLabels.push(label);
+    }
+    for (const y of ys) {
+      if (y === 0) continue;
+      const label = this._makeNumberLabel(y, this.yAxis.color);
+      label.position.set(yAxisLocalX - 0.45, this._numberToVisualY(y), 0);
+      this.add(label);
+      this._coordinateNumberLabels.push(label);
+    }
+    return this;
+  }
+
+  /**
+   * Get the tick-number labels added by addCoordinates (empty until it runs).
+   */
+  getCoordinateNumberLabels(): Mobject[] {
+    return [...this._coordinateNumberLabels];
+  }
+
+  /**
+   * Slope of the tangent to a graph at x, in coordinate space.
+   * @see slopeOfTangent in axes-calculus
+   */
+  slopeOfTangent(x: number, graph: FunctionGraph, dx?: number): number {
+    return slopeOfTangent(x, graph, dx);
+  }
+
+  /**
+   * Angle of the tangent to a graph at x, in points space (respects non-uniform
+   * x/y unit scaling).
+   * @see angleOfTangent in axes-calculus
+   */
+  angleOfTangent(x: number, graph: FunctionGraph, dx?: number): number {
+    return angleOfTangent(this, x, graph, dx);
+  }
+
+  /**
+   * Vertical lines from the x-axis to a graph, sampled across an interval.
+   * @see getVerticalLinesToGraph in axes-calculus
+   */
+  getVerticalLinesToGraph(graph: FunctionGraph, options?: VerticalLinesToGraphOptions): VGroup {
+    return getVerticalLinesToGraph(this, graph, options);
+  }
+
+  /**
+   * Group of lines illustrating the secant slope at x over a step dx.
+   * @see getSecantSlopeGroup in axes-calculus
+   */
+  getSecantSlopeGroup(x: number, graph: FunctionGraph, options?: SecantSlopeGroupOptions): VGroup {
+    return getSecantSlopeGroup(this, x, graph, options);
   }
 
   /**
@@ -765,6 +891,24 @@ export class Axes extends Group {
     }
 
     return result;
+  }
+
+  /** Default numbers for an axis: every step value from min to max (inclusive). */
+  private _axisDefaultNumbers(range: [number, number, number]): number[] {
+    const [min, max, step] = range;
+    if (step <= 0) return [];
+    const out: number[] = [];
+    const eps = step * 1e-4;
+    for (let n = min; n <= max + eps; n += step) {
+      out.push(Math.round(n / step) * step);
+    }
+    return out;
+  }
+
+  /** Build a tick-number label, formatted like NumberLine's number labels. */
+  private _makeNumberLabel(n: number, color: string): MathTexImage {
+    const text = Number.isInteger(n) ? String(n) : n.toFixed(2);
+    return new MathTexImage({ latex: text, fontSize: 28, color });
   }
 
   private _numberToVisualX(x: number): number {

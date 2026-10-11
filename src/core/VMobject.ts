@@ -18,6 +18,18 @@ import { lerp, lerpPoint as lerpPoint3D, signedArea2DFromStride } from '../utils
 import type { Point } from './VMobjectCurves';
 
 import { resamplePointList3D } from './VMobjectTransformAlignment';
+import {
+  pointFromProportionOnPath,
+  proportionFromPointOnPath,
+  partialPathPoints,
+  anchorsFromPoints,
+  smoothHandlePoints,
+  chainFromAnchorsAndHandles,
+  appendPointsToPointList,
+  insertNCurvesToPointList,
+} from './VMobjectCurveMath';
+import { colorGradient } from './VMobjectColorGradient';
+import { roundCornersPoints } from './VMobjectRoundCorners';
 
 // Re-export Point type so existing `import { Point } from './VMobject'` keeps working.
 export type { Point } from './VMobjectCurves';
@@ -114,6 +126,31 @@ export class VMobject extends VMobjectRendering {
   }
 
   /**
+   * Whether this exact node owns drawable geometry (its raw `_points3D`),
+   * bypassing any subclass override of `getLocalPoints()`. VGroup (and every
+   * class extending it — MathTex, SVGMobject, Arrow, Table, ...) overrides
+   * `getLocalPoints()` to aggregate its children's points for read-modify-write
+   * transforms (Homotopy, ApplyWave, ...); that aggregation must NOT make the
+   * container itself look like a stagger unit with points of its own.
+   */
+  protected _hasOwnPoints(): boolean {
+    return this._points3D.length > 0;
+  }
+
+  /**
+   * Public counterpart to {@link _hasOwnPoints}. Lets code outside the
+   * VMobject hierarchy (Transform's strategy selection, leaf-snapshot
+   * traversal) distinguish "this node carries its own geometry" from
+   * "this node delegates entirely to VMobject children" — true not just
+   * for VGroup, but for any VMobject subclass that clears its own points
+   * and renders via children (DashedLine, a multi-component
+   * RegularPolygram, ...).
+   */
+  hasOwnPoints(): boolean {
+    return this._hasOwnPoints();
+  }
+
+  /**
    * Own points in world coordinates (full ancestor S/R/T chain; render-only
    * z-layering offset excluded). Children's points are not included — use
    * {@link getAllPoints} for the full subtree.
@@ -146,6 +183,20 @@ export class VMobject extends VMobjectRendering {
     };
     collect(this);
     return result;
+  }
+
+  /**
+   * Family members (including self) that own points directly — Manim CE's
+   * `family_members_with_points()`. This is the unit that staggered animations
+   * (e.g. Create's lagRatio) should iterate over: a VMobject with several
+   * internal subpaths is still ONE entry here, never split per subpath.
+   *
+   * @post result === this.getFamily().filter(m => m instanceof VMobject && m._hasOwnPoints())
+   */
+  familyMembersWithPoints(): VMobject[] {
+    return this.getFamily().filter(
+      (m): m is VMobject => m instanceof VMobject && m._hasOwnPoints(),
+    );
   }
 
   /**
@@ -324,6 +375,46 @@ export class VMobject extends VMobjectRendering {
       this._markDirtyUpward();
     }
     return this;
+  }
+
+  /**
+   * Append a shared-anchor cubic chain to this VMobject's points (Manim CE's
+   * `append_points`). When this path is non-empty the first appended anchor
+   * continues from the last existing anchor and is dropped, so the chain stays
+   * one continuous path with the 3k+1-point invariant. Chainable.
+   *
+   * @param points - Points to append (a shared-anchor chain on its own)
+   * @returns this for chaining
+   */
+  appendPoints(points: number[][]): this {
+    this._points3D = appendPointsToPointList(this._points3D, points);
+    this._geometryDirty = true;
+    this._markDirtyUpward();
+    return this;
+  }
+
+  /**
+   * Subdivide this path so it contains `n` more cubic curves without changing
+   * its shape (Manim CE's `insert_n_curves`). Chainable.
+   *
+   * @param n - Number of cubics to add
+   * @returns this for chaining
+   */
+  insertNCurves(n: number): this {
+    return this.setPoints(this.insertNCurvesToPointList(n, this._points3D));
+  }
+
+  /**
+   * Pure counterpart of {@link insertNCurves}: return a copy of `points` with
+   * `n` more cubics (Manim CE's `insert_n_curves_to_point_list`). Does not
+   * mutate this VMobject.
+   *
+   * @param n - Number of cubics to add
+   * @param points - Source shared-anchor cubic chain
+   * @returns New chain with `n` more cubics
+   */
+  insertNCurvesToPointList(n: number, points: number[][]): number[][] {
+    return insertNCurvesToPointList(n, points);
   }
 
   /**
@@ -850,6 +941,164 @@ export class VMobject extends VMobjectRendering {
 
     this._markDirtyUpward();
 
+    return this;
+  }
+
+  // -----------------------------------------------------------------------
+  // Arc-length parametrization and partial curves
+  // -----------------------------------------------------------------------
+
+  /**
+   * Point at arc-length proportion `alpha` along this VMobject's curve.
+   *
+   * `alpha` is measured by cumulative arc length over all cubic segments, so
+   * `getPointFromProportion(0.5)` is the geometric midpoint of the whole path
+   * (not the midpoint of the middle segment). Matches Manim CE's
+   * `point_from_proportion`. Points are in this object's local space.
+   *
+   * @param alpha - Proportion in [0, 1]
+   * @returns Point as [x, y, z]
+   * @throws Error when the VMobject has no points
+   */
+  getPointFromProportion(alpha: number): Vector3Tuple {
+    return pointFromProportionOnPath(this._points3D, alpha);
+  }
+
+  /**
+   * Arc-length proportion of the point on this curve nearest to `point`.
+   *
+   * Monotone inverse of {@link getPointFromProportion}: for a point that lies
+   * on the curve it round-trips back to the same point at sampling resolution.
+   *
+   * @param point - Query point [x, y, z] in local space
+   * @returns Proportion in [0, 1]
+   */
+  proportionFromPoint(point: Vector3Tuple): number {
+    return proportionFromPointOnPath(this._points3D, point);
+  }
+
+  /**
+   * Replace this VMobject's points with the partial path of `vmobject`
+   * between arc-index proportions a and b. Port of Manim CE's
+   * `pointwise_become_partial`. Backs ShowPassingFlash on arbitrary VMobjects.
+   *
+   * @param vmobject - Source VMobject to take the partial path from
+   * @param a - Start proportion in [0, 1]
+   * @param b - End proportion in [0, 1]
+   * @returns this for chaining
+   */
+  pointwiseBecomePartial(vmobject: VMobject, a: number, b: number): this {
+    this.setPoints(partialPathPoints(vmobject.getLocalPoints(), a, b));
+    return this;
+  }
+
+  /**
+   * A new VMobject holding the portion of this curve between proportions a and b.
+   *
+   * For a closed path with a > b the subcurve wraps around the seam (the end
+   * portion [a, 1] followed by the start portion [0, b]), matching Manim CE's
+   * `get_subcurve`. Style is copied from this object.
+   *
+   * @param a - Start proportion in [0, 1]
+   * @param b - End proportion in [0, 1]
+   * @returns A new VMobject for the subcurve
+   */
+  getSubcurve(a: number, b: number): VMobject {
+    if (a > b && isClosedPath(this._points3D)) {
+      const head = this.copy();
+      head.pointwiseBecomePartial(this, a, 1);
+      const tail = this.copy();
+      tail.pointwiseBecomePartial(this, 0, b);
+      const headPoints = head.getLocalPoints();
+      const tailPoints = tail.getLocalPoints();
+      // Drop the tail's first anchor; it duplicates the head's last anchor.
+      head.setPoints(headPoints.concat(tailPoints.length > 0 ? tailPoints.slice(1) : []));
+      return head;
+    }
+    const sub = this.copy();
+    sub.pointwiseBecomePartial(this, a, b);
+    return sub;
+  }
+
+  // -----------------------------------------------------------------------
+  // Anchor modes: smooth / jagged
+  // -----------------------------------------------------------------------
+
+  /**
+   * Recompute handles so the path is a smooth C1-continuous spline through its
+   * anchors (Manim CE's `make_smooth`). Applies to every family member that
+   * owns points. Chainable.
+   *
+   * @returns this for chaining
+   */
+  makeSmooth(): this {
+    for (const member of this.familyMembersWithPoints()) {
+      const anchors = anchorsFromPoints(member.getLocalPoints());
+      if (anchors.length < 2) continue;
+      const { h1, h2 } = smoothHandlePoints(anchors);
+      member.setPoints(chainFromAnchorsAndHandles(anchors, h1, h2));
+    }
+    return this;
+  }
+
+  /**
+   * Recompute handles so every segment is a straight line between its anchors
+   * (Manim CE's `make_jagged`). Applies to every family member that owns
+   * points. Chainable.
+   *
+   * @returns this for chaining
+   */
+  makeJagged(): this {
+    for (const member of this.familyMembersWithPoints()) {
+      const anchors = anchorsFromPoints(member.getLocalPoints());
+      if (anchors.length < 2) continue;
+      member.setPointsAsCorners(anchors);
+    }
+    return this;
+  }
+
+  /**
+   * Replace each sharp corner with a circular arc of the given radius
+   * (Manim CE's `round_corners`). Reads the path as a polygon through its
+   * anchors and inserts, at every corner, an arc tangent to both adjacent
+   * edges. The offset from each corner is clamped to half the shorter adjacent
+   * edge, so arcs on short edges never overlap. Convex and reflex corners both
+   * round correctly. A collinear corner and a non-positive radius leave the
+   * corner sharp. A closed path rounds every vertex; an open path keeps its two
+   * end vertices sharp. Applies to every family member that owns points.
+   * Chainable.
+   *
+   * @param radius - Corner radius; <= 0 is a no-op
+   * @returns this for chaining
+   */
+  roundCorners(radius: number): this {
+    if (radius <= 0) return this;
+    for (const member of this.familyMembersWithPoints()) {
+      member.setPoints(roundCornersPoints(member.getLocalPoints(), radius));
+    }
+    return this;
+  }
+
+  // -----------------------------------------------------------------------
+  // Color gradients
+  // -----------------------------------------------------------------------
+
+  /**
+   * Distribute colors across this object's submobjects along a gradient
+   * (Manim CE's `set_color_by_gradient` submobject variant). Each family member
+   * that owns points gets one interpolated color. With a single color this is
+   * equivalent to {@link setColor}.
+   *
+   * @param colors - Two or more gradient colors
+   * @returns this for chaining
+   */
+  setColorByGradient(...colors: string[]): this {
+    if (colors.length === 0) return this;
+    if (colors.length === 1) return this.setColor(colors[0]);
+    const members = this.familyMembersWithPoints();
+    if (members.length === 0) return this;
+    const gradient = colorGradient(colors, members.length);
+    members.forEach((member, i) => member.setColor(gradient[i]));
     return this;
   }
 

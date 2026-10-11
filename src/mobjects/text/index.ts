@@ -14,6 +14,9 @@ export {
   type Grapheme,
 } from './TextSemantics';
 
+// Per-substring style runs (t2c/t2w/t2s layout model for Text)
+export { type TextStyleMaps, type TextStyleRun, buildStyledTextLines } from './textStyleRuns';
+
 // Glyph vector extraction (for stroke-draw animation)
 export { GlyphVMobject, type GlyphVMobjectOptions } from './GlyphVMobject';
 export { TextGlyphGroup, type TextGlyphGroupOptions } from './TextGlyphGroup';
@@ -56,6 +59,20 @@ export { parseSVGPathData, svgToVMobjects, type SVGToVMobjectOptions } from './s
 
 // Tex - Manim compatibility alias
 export { Tex, type TexOptions } from './Tex';
+
+// --- typst parity ---
+// Typst - SVG vector-based Typst rendering via lazy-loaded WASM compiler
+export { Typst, MathTypst, type TypstOptions, type MathTypstOptions } from './Typst';
+export {
+  renderTypstToSVG,
+  preloadTypst,
+  isTypstLoaded,
+  setTypstCompiler,
+  type TypstRenderOptions,
+  type TypstRenderResult,
+  type TypstSvgCompiler,
+} from './TypstRenderer';
+// --- end typst parity ---
 
 // DecimalNumber - Animatable number display
 export { DecimalNumber, Integer, type DecimalNumberOptions } from './DecimalNumber';

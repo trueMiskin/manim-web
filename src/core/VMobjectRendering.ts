@@ -220,6 +220,23 @@ export abstract class VMobjectRendering extends Mobject {
   }
 
   /**
+   * This VMobject's own stroke Line2 primitives (one per subpath), synced on
+   * demand. Scoped strictly to this instance's rendering cache — never
+   * includes descendants' primitives. Lets callers (e.g. Create's lagRatio
+   * stagger) drive exactly one mobject's own segments without walking the
+   * Three.js scene graph, which cannot distinguish "another family member"
+   * from "another subpath of this same member".
+   *
+   * `_cachedLine2`/`_cachedLine2Array` stay private and mutable internally
+   * (which cache is active is an implementation detail); this returns a
+   * fresh array so callers cannot corrupt that internal state.
+   */
+  getOwnStrokeLines(): Line2[] {
+    this.getThreeObject(); // ensure this node's own geometry is synced (cheap no-op if already clean)
+    return this._cachedLine2 ? [this._cachedLine2] : [...this._cachedLine2Array];
+  }
+
+  /**
    * VMobject-level upward dirty propagation must also mark geometry dirty.
    * This keeps geometry invalidation centralized for point/curve mutations.
    */
@@ -291,7 +308,7 @@ export abstract class VMobjectRendering extends Mobject {
   /**
    * Update the geometry within the Three.js group.
    */
-  protected _updateGeometry(group: THREE.Group): void {
+  protected _updateGeometry(group: THREE.Group, options?: { strokeOnly?: boolean }): void {
     const points3D = this.getVisiblePoints3D();
     if (points3D.length < 2) {
       this._disposeGroupChildren(group);
@@ -339,7 +356,15 @@ export abstract class VMobjectRendering extends Mobject {
       this._removeMeshStroke(group);
     }
 
-    // --- Fill mesh ---
+    // The fill (earcut triangulation) is opacity-independent. A stroke-only
+    // rebuild (e.g. an opacity boundary crossing) leaves it untouched (#548).
+    if (!options?.strokeOnly) {
+      this._updateFillGeometry(group, points3D);
+    }
+  }
+
+  /** Rebuild or dispose the earcut fill mesh for the current points. */
+  private _updateFillGeometry(group: THREE.Group, points3D: number[][]): void {
     if (this.fillOpacity > 0 && points3D.length >= 4) {
       const fillGeom = this._buildEarcutFillGeometry(points3D);
       if (fillGeom) {
@@ -645,23 +670,58 @@ export abstract class VMobjectRendering extends Mobject {
       );
     }
 
-    const isOpaque = this._opacity >= 1;
     const hasFill = this.fillOpacity > 0;
-    if (
-      isOpaque !== this._wasOpaque ||
-      hasFill !== this._hadFill ||
-      this.strokeWidth !== this._lastStrokeWidth
-    ) {
+    if (hasFill !== this._hadFill || this.strokeWidth !== this._lastStrokeWidth) {
       this._geometryDirty = true;
-      this._wasOpaque = isOpaque;
       this._hadFill = hasFill;
       this._lastStrokeWidth = this.strokeWidth;
     }
 
+    this._syncGeometryForOpacity();
+  }
+
+  /**
+   * Keep geometry consistent with the current opacity after a material sync.
+   *
+   * A pending geometry change forces a full rebuild. Otherwise, crossing the
+   * opacity-1.0 boundary is a material-only update: it flips the stroke
+   * materials' transparent/depthWrite state (which three.js recompiles only
+   * when needsUpdate bumps the version) and rebuilds only the stroke when its
+   * geometry depends on opacity, never the opacity-independent fill. Rebuilding
+   * the fill on every FadeIn completion froze large groups (issue #548).
+   */
+  private _syncGeometryForOpacity(): void {
     if (this._geometryDirty && this._threeObject instanceof THREE.Group) {
       this._updateGeometry(this._threeObject);
       this._geometryDirty = false;
+      this._wasOpaque = this._opacity >= 1;
+      return;
     }
+
+    const isOpaque = this._opacity >= 1;
+    if (isOpaque === this._wasOpaque) return;
+    this._wasOpaque = isOpaque;
+
+    if (this._strokeMaterial) this._strokeMaterial.needsUpdate = true;
+    if (this._strokeMeshMaterial) this._strokeMeshMaterial.needsUpdate = true;
+
+    if (this._threeObject instanceof THREE.Group && this._strokeGeometryDependsOnOpacity()) {
+      this._updateGeometry(this._threeObject, { strokeOnly: true });
+    }
+  }
+
+  /**
+   * Whether the stroke geometry changes when opacity crosses the 1.0 boundary.
+   *
+   * Line2 strokes add corner-wrap points for closed paths only at full opacity,
+   * and the shader stroke bakes opacity into per-segment instance colors. The
+   * mesh stroke geometry ignores opacity, so it needs no rebuild.
+   */
+  private _strokeGeometryDependsOnOpacity(): boolean {
+    if (this.shaderCurves) return true;
+    const points3D = this.getVisiblePoints3D();
+    if (this.useStrokeMesh && isClosedPath(points3D)) return false;
+    return isClosedPath(points3D);
   }
 
   // -----------------------------------------------------------------------

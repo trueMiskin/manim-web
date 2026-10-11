@@ -2,6 +2,106 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [0.10.0](https://github.com/maloyan/manim-web/compare/v0.9.0...v0.10.0) (2026-10-11)
+
+
+### Features
+
+* **text:** Typst + MathTypst mobjects via lazy-loaded Typst WASM (parity) ([fa2b82e](https://github.com/maloyan/manim-web/commit/fa2b82eb9bd4638d074dd2e293e86ede5763678d))
+
+
+### Documentation
+
+* PARITY.md to 100% feasible coverage (Typst shipped) ([b681036](https://github.com/maloyan/manim-web/commit/b681036016d8fb314b62fc566b8b065a25901b1e))
+
+## [0.9.0](https://github.com/maloyan/manim-web/compare/v0.8.0...v0.9.0) (2026-10-11)
+
+
+### Features
+
+* **color:** ManimColor/HSV/RGBA/RandomColorGenerator/getShadedRgb (parity) ([bed1de4](https://github.com/maloyan/manim-web/commit/bed1de4691a9daa8287db2daa4886b35e59d7686))
+* **geometry:** VMobject appendPoints/insertNCurves + ArcPolygonFromArcs (parity) ([74e7e6a](https://github.com/maloyan/manim-web/commit/74e7e6a218bde07aa43d33fca9c3c9d12615e14e))
+* **graphing:** CoordinateSystem export + LinearBase/LogBase scaling (parity) ([aa4f658](https://github.com/maloyan/manim-web/commit/aa4f658bfb85de2dc8b28ac264418e5f2452cc87))
+* override_animate + assertIsMobjectMethod + registerFont (parity) ([9194665](https://github.com/maloyan/manim-web/commit/9194665e5cb57314c9105b4a56014f87e8846c92))
+* **three-d:** get_3d_vmob_* helpers + SpecialThreeDScene (parity) ([2065986](https://github.com/maloyan/manim-web/commit/2065986c1906a0412893f53ebcab9b8cf87e9fce))
+
+
+### Documentation
+
+* update PARITY.md to 99.5% + tidy color type exports ([711037e](https://github.com/maloyan/manim-web/commit/711037e298c3f9419086fe8d7d2b957872382ad5))
+
+## [0.8.0](https://github.com/maloyan/manim-web/compare/v0.7.0...v0.8.0) (2026-10-11)
+
+
+### Features
+
+* close cheap ManimCE parity residual + add PARITY.md ([1de3efb](https://github.com/maloyan/manim-web/commit/1de3efba50c6a21803409eff28efa7713b36983e))
+
+
+### Documentation
+
+* prettier-format PARITY.md ([f5dfb3b](https://github.com/maloyan/manim-web/commit/f5dfb3b42fded656331a2235813ad4735442c66d))
+
+## [0.7.0](https://github.com/maloyan/manim-web/compare/v0.6.0...v0.7.0) (2026-10-11)
+
+
+### Features
+
+* **animation:** always_shift/always_rotate/turn_animation_into_updater/cycle_animation (parity) ([2eb80ea](https://github.com/maloyan/manim-web/commit/2eb80ea2158cfb1099ee454e5a27e2fd1abf80bb))
+* **constants:** export ManimCE math/axis/default/font constants (parity) ([3946298](https://github.com/maloyan/manim-web/commit/39462984787f2120f8999e634615834f49cb2d67))
+* **utils:** export ManimCE bezier utilities (parity) ([4510690](https://github.com/maloyan/manim-web/commit/4510690cd9d73bba464025593be7bf9543348ae6))
+* **utils:** export ManimCE color utilities (parity) ([eeced4f](https://github.com/maloyan/manim-web/commit/eeced4fa622e4d18da466ec49a74ac6e3229b2f1))
+* **utils:** export ManimCE iterables/unit/family/debug helpers (parity) ([73d9097](https://github.com/maloyan/manim-web/commit/73d9097e828d9fc7a3ce5f20e8184ceb3f4656c2))
+* **utils:** export ManimCE space_ops/paths/simple_functions (parity) ([d2303ca](https://github.com/maloyan/manim-web/commit/d2303ca7e99aed37390650156e13af20b6ff7d9e))
+
+## [0.6.0](https://github.com/maloyan/manim-web/compare/v0.5.0...v0.6.0) (2026-10-11)
+
+
+### Features
+
+* **animation:** fAlways + always updater helpers (parity) ([fc1ab30](https://github.com/maloyan/manim-web/commit/fc1ab309c3ae7e7f2ca5d6e88088ffad5b562458))
+* **core:** VMobject.roundCorners for arbitrary polygons (parity) ([38e1198](https://github.com/maloyan/manim-web/commit/38e11982df8fade8f199f8c71bb43f9612bccbea))
+* **text:** Text linear color gradient fill (parity) ([aa546bb](https://github.com/maloyan/manim-web/commit/aa546bbeebaad37aaaa5b15130cc970d0e7998b8))
+
+## [0.5.0](https://github.com/maloyan/manim-web/compare/v0.4.0...v0.5.0) (2026-10-11)
+
+
+### Features
+
+* **core:** always_redraw + size-to-fit/match helpers on Mobject (parity) ([d9706e4](https://github.com/maloyan/manim-web/commit/d9706e458f0b78e18bd280553102fc7783ebd9fc))
+* **core:** arc-length proportion, subcurve, smooth/jagged + color gradient on VMobject (parity) ([1313ca3](https://github.com/maloyan/manim-web/commit/1313ca3347d071dac47df0ceadd408ad6a49bf0f))
+* **graphing:** Axes addCoordinates + horizontal/lines-to-point (parity) ([7b431bd](https://github.com/maloyan/manim-web/commit/7b431bd10bb00c86b478c323937ddfa2868efd2e))
+* **text:** MathTex setColorByTex + Text per-substring color (parity) ([4abdb72](https://github.com/maloyan/manim-web/commit/4abdb7247ecbaa5b8629a912f96059d38575c034))
+
+
+### Bug Fixes
+
+* **graphing:** drop redundant calculus value exports flagged by knip ([#552](https://github.com/maloyan/manim-web/issues/552)) ([0ac75ec](https://github.com/maloyan/manim-web/commit/0ac75eca9f616681b8d0e77e7cf66df07e3c6944))
+
+## [0.4.0](https://github.com/maloyan/manim-web/compare/v0.3.24...v0.4.0) (2026-10-10)
+
+
+### Features
+
+* **core:** optional user ids + Scene.getMobject lookup ([#547](https://github.com/maloyan/manim-web/issues/547)) ([1226394](https://github.com/maloyan/manim-web/commit/1226394dd8d7cebbbc54cc693830308e8c7b0e3e))
+* **graphing:** add length options to ThreeDAxes ([#538](https://github.com/maloyan/manim-web/issues/538)) ([e44749a](https://github.com/maloyan/manim-web/commit/e44749a1c1745ac851a8ca30234a2fffccb43cef))
+* **graphing:** add tangent/secant/derivative toolkit to Axes ([ef8f0b1](https://github.com/maloyan/manim-web/commit/ef8f0b1372353ef718190ee4563a9f47d28e766e))
+* make runtime asset fallbacks configurable ([#542](https://github.com/maloyan/manim-web/issues/542)) ([09fa01a](https://github.com/maloyan/manim-web/commit/09fa01aed2719f137222d2d4823f415d29d08810))
+
+
+### Bug Fixes
+
+* **ci:** raise docs build heap limit to 8192MB to fix OOM ([#513](https://github.com/maloyan/manim-web/issues/513)) ([5281739](https://github.com/maloyan/manim-web/commit/5281739d30164d780c619cd3131d778d76f13c21)), closes [#510](https://github.com/maloyan/manim-web/issues/510)
+* **core:** avoid full geometry rebuild when opacity crosses 1 ([#548](https://github.com/maloyan/manim-web/issues/548)) ([22c1c8c](https://github.com/maloyan/manim-web/commit/22c1c8cd1cbc1758c63f90cc4a2ae3b17ee6916a))
+* correct DashedLine Create and Transform behavior ([#546](https://github.com/maloyan/manim-web/issues/546)) ([9fc77ba](https://github.com/maloyan/manim-web/commit/9fc77ba30d376c02dc4b5a8427a4b2247bc43148)), closes [#544](https://github.com/maloyan/manim-web/issues/544) [#544](https://github.com/maloyan/manim-web/issues/544) [#544](https://github.com/maloyan/manim-web/issues/544) [#544](https://github.com/maloyan/manim-web/issues/544) [#545](https://github.com/maloyan/manim-web/issues/545) [#534](https://github.com/maloyan/manim-web/issues/534) [#534](https://github.com/maloyan/manim-web/issues/534)
+* **graphing:** inherit NumberLine color in number labels ([#541](https://github.com/maloyan/manim-web/issues/541)) ([f749f21](https://github.com/maloyan/manim-web/commit/f749f21abe6bb533991710ea0e8d8d2d858da7c1))
+* publish transitive declaration dependencies ([#540](https://github.com/maloyan/manim-web/issues/540)) ([96024eb](https://github.com/maloyan/manim-web/commit/96024eb67a176d99cf28a844ed1977cd349a5092))
+
+
+### Documentation
+
+* fix package links, link the build write-up and author site ([#550](https://github.com/maloyan/manim-web/issues/550)) ([2422e30](https://github.com/maloyan/manim-web/commit/2422e307f9a9d1af0540b2ae1a2e2834c5b23152))
+
 ### [0.3.24](https://github.com/maloyan/manim-web/compare/v0.3.23...v0.3.24) (2026-07-13)
 
 

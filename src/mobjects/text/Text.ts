@@ -6,6 +6,16 @@ import { loadFontFace } from './TextFont';
 import { canvasSemanticRuns, textGraphemes, type SemanticTextRun } from './TextSemantics';
 import type { SkeletonizeOptions } from '../../utils/skeletonize';
 import { DEFAULT_FONT_SIZE_PT, DEFAULT_FONT_SIZE_IN_WORLD_SPACE } from '../../constants/fontRender';
+import {
+  type TextStyleMaps,
+  type TextStyleRun,
+  type StyledTextParams,
+  buildStyledTextLines,
+  gradientIsActive,
+  hasStyleMaps,
+  measureStyledText,
+  renderStyledTextToCanvas,
+} from './textStyleRuns';
 
 /** Scale factor from Canvas 2D output to point units.
  * At 72 DPI, 1pt = 4/3 canvas pixels. */
@@ -39,6 +49,21 @@ export interface TextOptions {
   textAlign?: 'left' | 'center' | 'right';
   /** URL to a font file (OTF/TTF) for glyph vector extraction. When provided, loadGlyphs() can extract glyph outlines for stroke-draw animation. */
   fontUrl?: string;
+  /** Per-substring color map (text-to-color), as in Manim CE. Colors every occurrence of each substring. */
+  t2c?: Record<string, string>;
+  /** Per-substring font-weight map (text-to-weight), e.g. { bold: 'bold' }. */
+  t2w?: Record<string, string | number>;
+  /** Per-substring font-style map (text-to-slant), e.g. { x: 'italic' }. */
+  t2s?: Record<string, string>;
+  /**
+   * Linear color gradient fill, as in Manim CE `Text(..., gradient=(A, B, ...))`.
+   * Provide 2+ CSS colors. The text fills with a horizontal left-to-right
+   * gradient that spans its rendered box, with the colors evenly spaced across
+   * [0, 1]. The gradient takes precedence over the flat `color`. It composes
+   * with `t2c`: a substring colored by `t2c` keeps that color, and only the
+   * remaining (un-colored) characters take the gradient.
+   */
+  gradient?: string[];
 }
 
 /** Resolution multiplier for crisp text on retina displays */
@@ -85,6 +110,11 @@ export class Text extends TexturedMobject {
 
   /** Optional font URL for glyph vector extraction */
   protected _fontUrl?: string;
+
+  /** Per-substring style maps (t2c/t2w/t2s). Empty when no styling requested. */
+  protected _styleMaps: TextStyleMaps = {};
+  /** Linear color gradient (2+ colors), or null when the fill is flat. */
+  protected _gradient: string[] | null = null;
   /** Cached glyph group (created lazily by loadGlyphs) */
   protected _glyphGroup: TextGlyphGroup | null = null;
   private _glyphCacheKey: string | null = null;
@@ -122,9 +152,15 @@ export class Text extends TexturedMobject {
       letterSpacing = 0,
       textAlign = 'center',
       fontUrl,
+      t2c,
+      t2w,
+      t2s,
+      gradient,
     } = options;
 
     this._text = text;
+    this._styleMaps = { t2c, t2w, t2s };
+    this._gradient = gradient ?? null;
     this._fontSize = fontSize;
     this._fontFamily = fontFamily;
     this._fontWeight = fontWeight;
@@ -224,6 +260,33 @@ export class Text extends TexturedMobject {
     this._updateMesh();
     this._markDirty();
     return this;
+  }
+
+  /**
+   * Get the per-substring style layout model: lines of styled runs.
+   *
+   * This is the testable model behind `t2c`/`t2w`/`t2s`. A run's null fields
+   * fall back to the Text base color/weight/style at render time.
+   */
+  getStyledTextLines(): TextStyleRun[][] {
+    return buildStyledTextLines(this._text, this._styleMaps);
+  }
+
+  /**
+   * Get the configured linear gradient colors, or null when the fill is flat.
+   * Returns a copy so callers cannot mutate the internal state.
+   */
+  getGradient(): string[] | null {
+    return this._gradient ? [...this._gradient] : null;
+  }
+
+  /**
+   * True when this Text renders through the styled-run canvas path: either a
+   * per-substring style map (t2c/t2w/t2s) or an active color gradient is set.
+   * Plain Text with none of these keeps the original flat render path.
+   */
+  protected _usesStyledPath(): boolean {
+    return hasStyleMaps(this._styleMaps) || gradientIsActive(this._gradient);
   }
 
   /**
@@ -446,6 +509,10 @@ export class Text extends TexturedMobject {
       return { lines: [], width: 0, height: 0 };
     }
 
+    if (this._usesStyledPath()) {
+      return this._measureStyledText();
+    }
+
     this._ctx.font = this._buildFontString();
     const lines = this._text.split('\n');
     const scaledFontSize = this._fontSize * RESOLUTION_SCALE;
@@ -490,6 +557,11 @@ export class Text extends TexturedMobject {
    */
   protected _renderToCanvas(): void {
     if (!this._canvas || !this._ctx) {
+      return;
+    }
+
+    if (this._usesStyledPath()) {
+      this._renderStyledToCanvas();
       return;
     }
 
@@ -642,6 +714,58 @@ export class Text extends TexturedMobject {
 
     // Restore alignment
     this._ctx.textAlign = this._textAlign;
+  }
+
+  /** Collect the style and layout fields the styled canvas path needs. */
+  protected _styledTextParams(): StyledTextParams {
+    return {
+      fontSize: this._fontSize,
+      fontFamily: this._fontFamily,
+      fontStyle: this._fontStyle,
+      fontWeight: this._fontWeight,
+      lineHeight: this._lineHeight,
+      textAlign: this._textAlign,
+      color: this.color,
+      fillOpacity: this.fillOpacity,
+      strokeWidth: this.strokeWidth,
+      gradient: this._gradient ?? undefined,
+    };
+  }
+
+  /**
+   * Measure styled (t2c/t2w/t2s) text via the shared styled-run layout helper.
+   */
+  protected _measureStyledText(): { lines: string[]; width: number; height: number } {
+    if (!this._ctx) {
+      return { lines: [], width: 0, height: 0 };
+    }
+    return measureStyledText(this._ctx, this.getStyledTextLines(), this._styledTextParams());
+  }
+
+  /**
+   * Render styled (t2c/t2w/t2s) text through the shared styled-run renderer,
+   * then store the resulting world-space size.
+   */
+  protected _renderStyledToCanvas(): void {
+    if (!this._canvas || !this._ctx) {
+      return;
+    }
+    const size = renderStyledTextToCanvas(
+      this._canvas,
+      this._ctx,
+      this.getStyledTextLines(),
+      this._styledTextParams(),
+      {
+        defaultFontSizePt: DEFAULT_FONT_SIZE_PT,
+        defaultFontSizeInWorld: DEFAULT_FONT_SIZE_IN_WORLD_SPACE,
+      },
+    );
+    this._worldWidth = size.width;
+    this._worldHeight = size.height;
+    this._canvasDirty = false;
+    if (this._texture) {
+      this._texture.needsUpdate = true;
+    }
   }
 
   /**
@@ -940,6 +1064,10 @@ export class Text extends TexturedMobject {
       letterSpacing: this._letterSpacing,
       textAlign: this._textAlign,
       fontUrl: this._fontUrl,
+      t2c: this._styleMaps.t2c,
+      t2w: this._styleMaps.t2w,
+      t2s: this._styleMaps.t2s,
+      gradient: this._gradient ?? undefined,
     });
     this._copyBaseAttributesInto(copy, { copyChildren: false });
     if (this._visibleRange) copy.setVisibleRange(...this._visibleRange);

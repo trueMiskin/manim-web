@@ -364,6 +364,28 @@ export class Scene {
     return this._mobjects;
   }
 
+  /**
+   * Find a mobject by its user-defined identifier (see `Mobject.setUserId`).
+   *
+   * Searches every added mobject and its descendants (the family tree), so a
+   * mobject nested inside a VGroup or Group is found as long as its container
+   * was added to the scene. This mirrors how `add()` tracks a mobject together
+   * with its children.
+   *
+   * @param id - The user id to match against each mobject's `userId`
+   * @returns The first mobject whose `userId` equals `id`, or `undefined` if
+   *   none matches. When several mobjects share the same id, the first one
+   *   found in scene-insertion then depth-first family order is returned.
+   */
+  getMobject(id: string): Mobject | undefined {
+    for (const mobject of this._mobjects) {
+      for (const member of mobject.getFamily()) {
+        if (member.userId === id) return member;
+      }
+    }
+    return undefined;
+  }
+
   // ---------------------------------------------------------------------------
   // Audio
   // ---------------------------------------------------------------------------
@@ -452,6 +474,17 @@ export class Scene {
     for (const mobject of mobjects) {
       if (!this._mobjects.has(mobject)) {
         this._mobjects.add(mobject);
+        // Set per-instance renderer context for VMobjects (multi-scene support)
+        // BEFORE the first getThreeObject() sync below. _setSceneContext()
+        // only writes plain fields (no Three.js object needed), so this is
+        // safe to do first — and it must go first: getThreeObject() triggers
+        // VMobjectRendering._syncMaterialToThree(), which computes
+        // linewidth/resolution from this context. Doing it after would leave
+        // that first sync using the class-level static fallback (e.g.
+        // frameWidth=14) instead of this scene's real, aspect-corrected
+        // frameWidth, producing a wrong stroke width until something else
+        // happens to re-dirty and resync the mobject later.
+        this._setSceneContextRecursive(mobject);
         const threeObj = mobject.getThreeObject();
         const ro = this._renderOrderCounter++;
         threeObj.renderOrder = ro;
@@ -474,8 +507,6 @@ export class Scene {
         if (!this._isInSceneGraph(threeObj)) {
           this._threeScene.add(threeObj);
         }
-        // Set per-instance renderer context for VMobjects (multi-scene support)
-        this._setSceneContextRecursive(mobject);
         // If mobject or any descendant has pending async rendering (e.g. MathTex),
         // re-render when done. Recursively check children since MathTex objects
         // may be nested inside VGroup/Group containers.
