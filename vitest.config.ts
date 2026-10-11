@@ -5,9 +5,11 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   plugins: [UnpluginTypia()],
   resolve: {
-    alias: {
-      '@': resolve(__dirname, 'src'),
-    },
+    alias: [
+      { find: /^manim-web\/reveal$/, replacement: resolve(__dirname, 'src/reveal/index.ts') },
+      { find: /^manim-web$/, replacement: resolve(__dirname, 'src/index.ts') },
+      { find: '@', replacement: resolve(__dirname, 'src') },
+    ],
   },
   test: {
     pool: 'threads',
