@@ -1,9 +1,9 @@
 import { Scene } from '../core/Scene';
-import { Mobject } from '../core/Mobject';
+import type { Mobject } from '../core/Mobject';
 import { Animation } from '../animation/Animation';
 import { AnimationGroup } from '../animation/AnimationGroup';
 import { MasterTimeline, type Segment, type SlideOptions } from '../animation/MasterTimeline';
-import { prepareMobjects } from '../core/readiness';
+import { animationMobjects, prepareMobjects } from '../core/readiness';
 import { captureScene, restoreScene, type SceneCheckpoint } from './SceneCheckpoint';
 import type { MobjectState } from '../core/StateManager';
 
@@ -46,10 +46,7 @@ export class RecordingScene {
     if (animations.length === 0) return;
     for (const animation of this._collectAll(animations)) {
       // Include targets before begin/cleanup can swap them into the scene.
-      for (const value of Object.values(animation)) {
-        if (value instanceof Mobject) this._known.add(value);
-      }
-      this._known.add(animation.mobject);
+      for (const mobject of animationMobjects(animation)) this._known.add(mobject);
     }
     await prepareMobjects([...this._realScene.mobjects, ...this._known]);
     const start = this._capture();

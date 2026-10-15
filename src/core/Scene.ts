@@ -1,4 +1,4 @@
-import { prepareMobjects } from './readiness';
+import { animationMobjects, prepareMobjects } from './readiness';
 import * as THREE from 'three';
 import { Renderer, RendererOptions, IRenderer } from './Renderer';
 import { NullRenderer } from './NullRenderer';
@@ -687,8 +687,9 @@ export class Scene {
     try {
       // Wait for any async renders (e.g. SVG-based MathTex) to complete before
       // starting animations. Without this, Create/DrawBorderThenFill would
-      // animate an empty mobject because SVG paths haven't loaded yet.
-      await prepareMobjects(allAnimations.map((animation) => animation.mobject));
+      // animate an empty mobject because SVG paths haven't loaded yet. Targets
+      // count too: TransformMatchingCode reads its target's highlighted tokens.
+      await prepareMobjects(allAnimations.flatMap(animationMobjects));
 
       // Force geometry sync so begin() can detect Line2 children for dash-reveal
       // animations (e.g. MathTex Create). This must happen before begin() but

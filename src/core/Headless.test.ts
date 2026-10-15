@@ -11,6 +11,8 @@ import { ReplacementTransform } from '../animation/transform/Transform';
 import { Text } from '../mobjects/text/Text';
 import { Code } from '../mobjects/text/Code';
 import { DecimalNumber } from '../mobjects/text/DecimalNumber';
+import { Animation } from '../animation/Animation';
+import type { Mobject } from './Mobject';
 
 describe('NullRenderer', () => {
   it('creates with default dimensions', () => {
@@ -163,6 +165,46 @@ describe('Scene headless mode', () => {
     await scene.play(new ReplacementTransform(src, dst, { duration: 0.1 }));
     expect(scene.mobjects.has(src)).toBe(false);
     expect(scene.mobjects.has(dst)).toBe(true);
+    scene.dispose();
+  });
+
+  // MIGRATION: example for the property
+  //   ∀ animation a, ∀ Mobject-valued field m of a, scene.play(a) awaits
+  //   m.waitForRender() before a.begin().
+  // Replace with a property test once the suite lands.
+  it('play() waits for an animation target to render before begin()', async () => {
+    let targetReady = false;
+    const target = Object.assign(new Circle(), {
+      // Resolves on a later macrotask, like a grammar that is still loading.
+      waitForRender: () =>
+        new Promise<void>((resolve) =>
+          setTimeout(() => {
+            targetReady = true;
+            resolve();
+          }, 10),
+        ),
+    });
+    class TargetProbe extends Animation {
+      targetReadyAtBegin = false;
+      constructor(
+        mobject: Mobject,
+        readonly target: Mobject,
+      ) {
+        super(mobject, { duration: 0.1 });
+      }
+      override begin(): void {
+        super.begin();
+        this.targetReadyAtBegin = targetReady;
+      }
+      interpolate(): void {}
+    }
+
+    const scene = Scene.createHeadless();
+    const source = new Circle();
+    scene.add(source);
+    const probe = new TargetProbe(source, target);
+    await scene.play(probe);
+    expect(probe.targetReadyAtBegin).toBe(true);
     scene.dispose();
   });
 

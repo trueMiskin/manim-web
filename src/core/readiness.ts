@@ -1,9 +1,23 @@
-import type { Mobject } from './Mobject';
+import type { Animation } from '../animation/Animation';
+import { Mobject } from './Mobject';
 
 interface PreparedMobject extends Mobject {
   waitForRender?: () => Promise<unknown>;
   waitForLoad?: () => Promise<unknown>;
   waitForReady?: () => Promise<unknown>;
+}
+
+/**
+ * The mobjects an animation reads when it begins: its own mobject plus every
+ * mobject it holds directly, such as a transform target.
+ *
+ * @post result[0] === animation.mobject
+ * @post Object.values(animation).every((v) => !(v instanceof Mobject) || result.includes(v))
+ */
+export function animationMobjects(animation: Animation): Mobject[] {
+  const fields: unknown[] = Object.values(animation);
+  const held = fields.filter((value): value is Mobject => value instanceof Mobject);
+  return [animation.mobject, ...held];
 }
 
 /** Await font metrics and recursively prepared geometry before measuring or capturing. */
