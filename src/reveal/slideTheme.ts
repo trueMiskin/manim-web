@@ -54,9 +54,7 @@ export const DEFAULT_SLIDE_THEME: Readonly<ResolvedSlideTheme> = Object.freeze({
 
 /** Resolve a palette role (such as "accent") or retain an ordinary CSS color. */
 export function slideColor(theme: SlideTheme, color = 'text'): string {
-  return Object.prototype.hasOwnProperty.call(theme.colors, color)
-    ? theme.colors[color as keyof SlideTheme['colors']]
-    : color;
+  return Object.prototype.hasOwnProperty.call(theme.colors, color) ? theme.colors[color] : color;
 }
 
 /** @post result.colors !== DEFAULT_SLIDE_THEME.colors */

@@ -64,7 +64,7 @@ export class AddTextWordByWord extends Animation {
       this._fullText = this.mobject.getTextContent?.() ?? this.mobject.getText();
       this._wordEnds = Array.from(
         this._fullText.matchAll(/\S+\s*/gu),
-        (match) => match.index! + match[0].length,
+        (match) => match.index + match[0].length,
       );
       this.interpolate(0);
     }

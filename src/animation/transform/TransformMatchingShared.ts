@@ -45,7 +45,7 @@ export function ownMatchingPart(source: Mobject, target: VMobject): VMobject {
   const targetObject = target._syncWorldMatrices();
   const sourceObject = source._syncWorldMatrices();
   const local = sourceObject.matrixWorld.clone().invert().multiply(targetObject.matrixWorld);
-  const copy = target.copy() as VMobject;
+  const copy = target.copy();
   const quaternion = new THREE.Quaternion();
   local.decompose(copy.position, quaternion, copy.scaleVector);
   copy.rotation.setFromQuaternion(quaternion);
@@ -71,8 +71,8 @@ export function matchingLeafCopies(source: VMobject, target: VMobject): [VMobjec
   const sourceObject = source._syncWorldMatrices();
   const targetObject = target._syncWorldMatrices();
   const matrix = sourceObject.matrixWorld.clone().invert().multiply(targetObject.matrixWorld);
-  const sourceCopy = source.copy() as VMobject;
-  const targetCopy = target.copy() as VMobject;
+  const sourceCopy = source.copy();
+  const targetCopy = target.copy();
   targetCopy.setPoints(
     target
       .getLocalPoints()

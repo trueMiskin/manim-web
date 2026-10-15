@@ -238,8 +238,7 @@ export class MathTex extends VGroup {
       );
     if (typeof state.isMultiPart === 'boolean') this._isMultiPart = state.isMultiPart;
     if (typeof state.fontSize === 'number') this._fontSize = state.fontSize;
-    if (this._isMultiPart)
-      this._parts = this.children.filter(isMathTexPart);
+    if (this._isMultiPart) this._parts = this.children.filter(isMathTexPart);
   }
 
   /** LaTeX semantics for copying/accessibility; math source is not ordinary prose. */
@@ -712,9 +711,7 @@ export class MathTex extends VGroup {
     copy._sourceLatex = this._sourceLatex;
     copy._partColors = [...this._partColors];
     this._copyBaseAttributesInto(copy, { copyChildren: true });
-    copy._parts = this._isMultiPart
-      ? copy.children.filter(isMathTexPart)
-      : [];
+    copy._parts = this._isMultiPart ? copy.children.filter(isMathTexPart) : [];
     if (this.children.length === 0 && this._renderPromise) {
       const pendingScale = this.scaleVector.clone();
       copy._renderPromise = this.waitForRender().then(() => {
@@ -725,9 +722,7 @@ export class MathTex extends VGroup {
           copy.scaleVector.z / (pendingScale.z || 1),
         );
         for (const child of this.children) copy.add(child.copy());
-        copy._parts = this._isMultiPart
-          ? copy.children.filter(isMathTexPart)
-          : [];
+        copy._parts = this._isMultiPart ? copy.children.filter(isMathTexPart) : [];
       });
     }
     return copy;

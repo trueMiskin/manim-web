@@ -232,9 +232,7 @@ export class Tex extends MathTex {
       false,
     );
     this._copyBaseAttributesInto(copy, { copyChildren: true });
-    copy._parts = this._isMultiPart
-      ? copy.children.filter(isMathTexPart)
-      : [];
+    copy._parts = this._isMultiPart ? copy.children.filter(isMathTexPart) : [];
     if (this.children.length === 0 && this._renderPromise) {
       const pendingScale = this.scaleVector.clone();
       copy._renderPromise = this.waitForRender().then(() => {
@@ -245,9 +243,7 @@ export class Tex extends MathTex {
           copy.scaleVector.z / (pendingScale.z || 1),
         );
         for (const child of this.children) copy.add(child.copy());
-        copy._parts = this._isMultiPart
-          ? copy.children.filter(isMathTexPart)
-          : [];
+        copy._parts = this._isMultiPart ? copy.children.filter(isMathTexPart) : [];
       });
     }
     return copy;

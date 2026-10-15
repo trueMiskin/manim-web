@@ -123,9 +123,7 @@ export class ParagraphMathRun extends MathTex {
     const copy = new ParagraphMathRun(options, false);
     this._copyBaseAttributesInto(copy);
     copy.metrics = this.metrics ? { ...this.metrics } : null;
-    copy._parts = this._isMultiPart
-      ? copy.children.filter(isMathTexPart)
-      : [];
+    copy._parts = this._isMultiPart ? copy.children.filter(isMathTexPart) : [];
     return copy;
   }
 }
