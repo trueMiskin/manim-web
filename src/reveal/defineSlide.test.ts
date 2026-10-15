@@ -324,7 +324,9 @@ describe('content slide authoring', () => {
         await s.step({ id: 'out' }, () => s.play(new FadeOut(diagram, { duration: 0.1 })));
         await s.step({ id: 'return-child' }, () => s.reveal(first));
         await s.step({ id: 'show' }, () => s.show(diagram));
-        await s.step({ id: 'remove' }, () => s.scene.remove(diagram));
+        await s.step({ id: 'remove' }, () => {
+          s.scene.remove(diagram);
+        });
         await s.step({ id: 'return-second' }, () => s.reveal(second));
       },
     );

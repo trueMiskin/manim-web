@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createCanvas } from '@napi-rs/canvas';
+import * as THREE from 'three';
 import { SlideRegion } from './slideBlocks';
 import { SlideLayout } from './slideLayout';
 import { DEFAULT_SLIDE_THEME } from './slideTheme';
@@ -112,10 +113,9 @@ it('aligns the bullet baseline with a tall first-line formula', async () => {
   const marker = row.children[0] as ParagraphTextRun;
   const content = row.children[1] as RichParagraph;
   const formula = content.children[0] as ParagraphMathRun;
-  const baseline = () => ({
-    marker: marker._localToWorld([0, marker.measureInline().baseline, 0])[1],
-    formula: formula._localToWorld([0, formula.measureInline().baseline, 0])[1],
-  });
+  const worldY = (run: ParagraphTextRun | ParagraphMathRun) =>
+    new THREE.Vector3(0, run.measureInline().baseline, 0).applyMatrix4(run._worldMatrix()).y;
+  const baseline = () => ({ marker: worldY(marker), formula: worldY(formula) });
   expect(baseline().marker).toBeCloseTo(baseline().formula, 6);
   const bounds = row.getBounds();
   await prepareMobjects([row]);

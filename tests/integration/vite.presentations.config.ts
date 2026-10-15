@@ -1,4 +1,6 @@
+import type { UserConfig } from 'vite';
 import config from '../../vite.config';
 
 // Stable browser qualification must not restart an active animation on file edits.
-export default { ...config, server: { hmr: false } };
+const presentationsConfig: UserConfig = { ...config, server: { hmr: false } };
+export default presentationsConfig;

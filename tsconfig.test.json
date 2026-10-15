@@ -1,7 +1,14 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "noEmit": true
+    "noEmit": true,
+    "rootDir": ".",
+    "customConditions": ["source"],
+    "paths": {
+      "@/*": ["src/*"],
+      "manim-web": ["src/index.ts"],
+      "manim-web/reveal": ["src/reveal/index.ts"]
+    }
   },
   "include": ["src", "tests"],
   "exclude": []

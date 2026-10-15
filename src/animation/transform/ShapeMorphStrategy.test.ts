@@ -15,9 +15,9 @@ function mockCanvas(): void {
     }),
     putImageData: () => {},
     drawImage: () => {},
-  };
-  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(
-    (() => context) as HTMLCanvasElement['getContext'],
+  } as unknown as CanvasRenderingContext2D;
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation((contextId: string) =>
+    contextId === '2d' ? context : null,
   );
 }
 

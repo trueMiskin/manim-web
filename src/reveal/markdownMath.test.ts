@@ -33,7 +33,7 @@ Use <code>$htmlCode$</code> verbatim.
 \`\`\`tex
 $literal$ and $$literal$$
 \`\`\`
-`.replaceAll('\\`', '`'),
+`.replace(/\\`/g, '`'),
     );
     const screen = renderStatic(slide);
     const print = renderStatic(slide, true);

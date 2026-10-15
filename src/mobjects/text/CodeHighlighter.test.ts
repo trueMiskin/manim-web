@@ -20,7 +20,7 @@ describe('code grammar adapter', () => {
     for (const tokens of supported) {
       expect(sourceOf(tokens)).toBe(source);
       expect(tokens[1]).toEqual([]);
-      expect(tokens.at(-1)).toEqual([]);
+      expect(tokens[tokens.length - 1]).toEqual([]);
     }
     expect(await tokenizeCode(source, ' C++ ')).toEqual(supported[1]);
     expect(await tokenizeCode(source, 'js')).toEqual(supported[3]);

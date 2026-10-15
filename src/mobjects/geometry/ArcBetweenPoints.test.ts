@@ -15,7 +15,7 @@ describe('ArcBetweenPoints curve geometry', () => {
         const arc = new ArcBetweenPoints({ start, end, angle });
         const points = arc.getPoints();
         expect(points[0]).toEqual(start);
-        expect(points.at(-1)).toEqual(end);
+        expect(points[points.length - 1]).toEqual(end);
         expect(arc.pointFromProportion(0)).toEqual(start.map((value) => expect.closeTo(value, 8)));
         expect(arc.pointFromProportion(1)).toEqual(end.map((value) => expect.closeTo(value, 8)));
         expect(points.flat().every(Number.isFinite)).toBe(true);

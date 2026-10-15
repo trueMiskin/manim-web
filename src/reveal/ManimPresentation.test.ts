@@ -153,6 +153,7 @@ function createDeck() {
 }
 
 const flush = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+const last = <T>(items: readonly T[]): T | undefined => items[items.length - 1];
 
 beforeEach(() => {
   players.length = 0;
@@ -204,7 +205,7 @@ describe('Reveal presentation integration', () => {
     const currentId = deck.getCurrentSlide().id;
     const selector = document.querySelector<HTMLSelectElement>('[aria-label="Color palette"]')!;
     expect(selector.value).toBe('dark');
-    expect(seenColors.at(-1)).toBe(palettes.dark.ray);
+    expect(last(seenColors)).toBe(palettes.dark.ray);
 
     const updated = { ...assets(), palette: { name: 'light', colors: palettes.light } };
     for (const scene of Object.values(updated.scenes))
@@ -214,10 +215,10 @@ describe('Reveal presentation integration', () => {
     await plugin.setPalette('light');
     expect(plugin.palette).toBe('light');
     expect(definition.palette).toBe('dark');
-    expect(seenColors.at(-1)).toBe(palettes.light.ray);
+    expect(last(seenColors)).toBe(palettes.light.ray);
     expect(deck.getCurrentSlide().id).toBe(currentId);
-    expect(players.at(-1)!.calls.at(-1)).toBe('seek:two:end');
-    expect(players.at(-1)!.isPlaying).toBe(false);
+    expect(last(last(players)!.calls)).toBe('seek:two:end');
+    expect(last(players)!.isPlaying).toBe(false);
     expect(selector.value).toBe('light');
     expect(selector.disabled).toBe(false);
     expect(root.style.getPropertyValue('--manim-text')).toBe(palettes.light.text);
@@ -232,7 +233,7 @@ describe('Reveal presentation integration', () => {
     await plugin.setPalette('light');
     expect(compile).toHaveBeenCalledTimes(1);
     compile.mockRejectedValue(new Error('Could not render the new palette'));
-    const previous = players.at(-1)!;
+    const previous = last(players)!;
     await expect(plugin.setPalette('dark')).rejects.toThrow('Could not render the new palette');
     expect(plugin.palette).toBe('light');
     expect(plugin.ready).toBe(true);
@@ -270,7 +271,7 @@ describe('Reveal presentation integration', () => {
     await plugin.init(deck);
     navigate(1, 1);
     await flush();
-    const previous = players.at(-1)!;
+    const previous = last(players)!;
     const currentId = deck.getCurrentSlide().id;
     const updated = assets();
     for (const scene of Object.values(updated.scenes)) {
@@ -284,8 +285,8 @@ describe('Reveal presentation integration', () => {
     expect(deck.getCurrentSlide().id).toBe(currentId);
     expect(deck.getCurrentSlide().style.backgroundColor).toBe('#ffffff');
     expect(previous.disposed).toBe(true);
-    expect(players.at(-1)!.calls.at(-1)).toBe('seek:two:end');
-    expect(players.at(-1)!.isPlaying).toBe(false);
+    expect(last(last(players)!.calls)).toBe('seek:two:end');
+    expect(last(players)!.isPlaying).toBe(false);
     expect(plugin.exportAssets()).toEqual(updated);
     expect(document.querySelectorAll('.manim-handout')).toHaveLength(1);
     for (const image of document.querySelectorAll<HTMLImageElement>('.manim-snapshot img')) {
@@ -348,7 +349,7 @@ describe('Reveal presentation integration', () => {
     expect(destination.dataset.preparing).toBeUndefined();
     expect(destination.dataset.live).toBe('true');
     expect(getComputedStyle(poster).visibility).toBe('hidden');
-    expect(players.at(-1)!.calls.at(-1)).toBe('play:one');
+    expect(last(last(players)!.calls)).toBe('play:one');
   });
 
   // MIGRATION: authored checkpoints map bijectively to native (h,v) leaves and
@@ -379,19 +380,19 @@ describe('Reveal presentation integration', () => {
     expect(players[0].calls).toContain('seek:one:end');
 
     navigate(0, 1);
-    expect(players[0].calls.at(-1)).toBe('play:two');
+    expect(last(players[0].calls)).toBe('play:two');
     window.dispatchEvent(new Event('beforeprint'));
     expect(players[0].isPlaying).toBe(false);
     window.dispatchEvent(new Event('afterprint'));
     expect(players[0].isPlaying).toBe(true);
     navigate(0, 0);
-    expect(players[0].calls.at(-1)).toBe('seek:one:end');
+    expect(last(players[0].calls)).toBe('seek:one:end');
     emit('overviewshown');
     navigate(1, 1);
     emit('overviewhidden');
     await flush();
     expect(players[0].disposed).toBe(true);
-    expect(players[1].calls.at(-1)).toBe('seek:two:end');
+    expect(last(players[1].calls)).toBe('seek:two:end');
   });
 
   // MIGRATION: any superseded async scene preparation is disposed and can never
@@ -450,6 +451,6 @@ describe('Reveal presentation integration', () => {
     await flush();
     expect(players).toHaveLength(2);
     expect(players.filter((player) => !player.disposed)).toHaveLength(1);
-    expect(players[1].calls.at(-1)).toBe('seek:two:end');
+    expect(last(players[1].calls)).toBe('seek:two:end');
   });
 });
